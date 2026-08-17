@@ -29,7 +29,8 @@ import {
   roll1D6, simOpportunity, simPenalty, simMatchGoals, simPenaltyShootout
 } from '@/lib/career';
 import { sanitizeChampionsBracket } from '@/lib/championsSanitizer';
-import championsStadiumBg from './assets/images/champions_stadium_night_1786919054202.jpg';
+import championsStadiumBg from './assets/images/champions_league_stadium_1786921289637.jpg';
+import worldCupStadiumDayBg from './assets/images/world_cup_stadium_day_1786921535635.jpg';
 
 // ==========================================
 // 1. CONSTANTES DEL SISTEMA Y PRESETS
@@ -866,11 +867,30 @@ const FormBadges = ({ form }: { form: string[] }) => {
 };
 
 
-const Shield = ({ color1, color2, initial, size = 'md', isFlag = false }) => {
-  const dims = size === 'lg' ? 'w-20 h-24' : size === 'sm' ? 'w-8 h-10' : size === 'xs' ? 'w-5 h-6' : 'w-12 h-14';
-  const imgDims = size === 'lg' ? 'w-20 h-14' : size === 'sm' ? 'w-8 h-6' : size === 'xs' ? 'w-5 h-4' : 'w-12 h-8';
-  const fontSize = size === 'lg' ? 'text-2xl' : size === 'sm' ? 'text-[10px]' : size === 'xs' ? 'text-[8px]' : 'text-sm';
+const getTeamLogoSlug = (name?: string): string => {
+  if (!name) return '';
+  return name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+};
+
+const Shield = ({ color1, color2, initial, size = 'md', isFlag = false, logoUrl = null }: {
+  color1?: string;
+  color2?: string;
+  initial?: string;
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+  isFlag?: boolean;
+  logoUrl?: string | null;
+}) => {
+  const dims = size === 'xl' ? 'w-24 h-28' : size === 'lg' ? 'w-20 h-24' : size === 'sm' ? 'w-8 h-10' : size === 'xs' ? 'w-5 h-6' : 'w-12 h-14';
+  const imgDims = size === 'xl' ? 'w-24 h-18' : size === 'lg' ? 'w-20 h-14' : size === 'sm' ? 'w-8 h-6' : size === 'xs' ? 'w-5 h-4' : 'w-12 h-8';
+  const fontSize = size === 'xl' ? 'text-3xl' : size === 'lg' ? 'text-2xl' : size === 'sm' ? 'text-[10px]' : size === 'xs' ? 'text-[8px]' : 'text-sm';
   const safeInitial = initial ? initial[0] : '?';
+  const [logoFailed, setLogoFailed] = useState(false);
 
   if (isFlag) {
     const code = getCountryCode(initial);
@@ -890,6 +910,22 @@ const Shield = ({ color1, color2, initial, size = 'md', isFlag = false }) => {
         <div className='absolute inset-0 flex items-center justify-center'>
           <span className={`${fontSize} font-black text-white mix-blend-difference italic drop-shadow-md`}>{safeInitial}</span>
         </div>
+      </div>
+    );
+  }
+
+  const slug = getTeamLogoSlug(initial);
+  const potentialLogo = logoUrl || (slug ? `/crests/${slug}.png` : null);
+
+  if (potentialLogo && !logoFailed) {
+    return (
+      <div className={`${dims} relative flex items-center justify-center shrink-0 p-0.5`}>
+        <img
+          src={potentialLogo}
+          alt={initial || 'Escudo'}
+          className='w-full h-full object-contain drop-shadow-md'
+          onError={() => setLogoFailed(true)}
+        />
       </div>
     );
   }
@@ -2119,7 +2155,7 @@ const RulesView = ({ setView }) => (
   </div>
 );
 
-const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pendingLeagueIds, allLeaguesFinished, championsFinished, onSimulateLeague, onSimulateAll, onNewSeason, career, onOpenCareer }) => {
+const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pendingLeagueIds, allLeaguesFinished, championsFinished, onSimulateLeague, onSimulateAll, onNewSeason, onSimulateChampions, career, onOpenCareer }) => {
   const [showLeagues, setShowLeagues] = useState(false);
   const globalMatchday = seasonState?.globalMatchday || 1;
   const pending = pendingLeagueIds || [];
@@ -2201,9 +2237,9 @@ const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pe
         {pending.length > 0 && (
           <button
             onClick={onSimulateAll}
-            className='w-full py-3.5 px-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 rounded-2xl text-[11px] font-black uppercase italic tracking-wider shadow-xl shadow-amber-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 border border-amber-300/40'
+            className='w-full py-3.5 px-4 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-2xl text-[11px] font-black uppercase italic tracking-wider active:scale-[0.98] transition-colors flex items-center justify-center gap-2 border border-amber-300/60 shadow-md'
           >
-            <Dices size={17} />
+            <Dices size={17} className='text-slate-950 stroke-[2.5]' />
             <span>Simular Jornada {globalMatchday} ({pending.length} ligas)</span>
           </button>
         )}
@@ -2211,9 +2247,9 @@ const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pe
         {allLeaguesFinished && !championsFinished && (
           <button
             onClick={() => { setActiveCompId('C1'); setCompView('main'); setView('competition'); }}
-            className='w-full py-3.5 px-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-2xl text-[11px] font-black uppercase italic tracking-wider shadow-xl shadow-blue-500/25 active:scale-[0.98] transition-all flex items-center justify-center gap-2 border border-blue-400/50'
+            className='w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-[11px] font-black uppercase italic tracking-wider active:scale-[0.98] transition-colors flex items-center justify-center gap-2 border border-blue-400/40 shadow-md'
           >
-            <Trophy size={17} className='text-amber-300 animate-pulse' />
+            <Trophy size={17} className='text-amber-300' />
             <span>Disputar Champions League</span>
           </button>
         )}
@@ -2221,9 +2257,9 @@ const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pe
         {allLeaguesFinished && championsFinished && (
           <button
             onClick={onNewSeason}
-            className='w-full py-3.5 px-4 bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-amber-300 hover:to-yellow-400 text-slate-950 rounded-2xl text-[11px] font-black uppercase italic tracking-wider shadow-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 border border-amber-300'
+            className='w-full py-3.5 px-4 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-2xl text-[11px] font-black uppercase italic tracking-wider active:scale-[0.98] transition-colors flex items-center justify-center gap-2 border border-amber-300/60 shadow-md'
           >
-            <RotateCcw size={16} />
+            <RotateCcw size={16} className='text-slate-950 stroke-[2.5]' />
             <span>Iniciar Temporada {seasonState?.season ? seasonState.season + 1 : 2}</span>
           </button>
         )}
@@ -2232,7 +2268,7 @@ const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pe
       {/* MODO CARRERA DT */}
       <button
         onClick={onOpenCareer}
-        className='w-full p-4 bg-gradient-to-r from-slate-900/70 via-slate-900/60 to-amber-950/30 backdrop-blur-xl rounded-3xl border border-amber-400/30 flex items-center justify-between hover:border-amber-400/60 hover:shadow-[0_0_25px_rgba(245,158,11,0.2)] active:scale-[0.98] transition-all group text-left'
+        className='w-full p-4 bg-gradient-to-r from-slate-900/40 via-slate-900/35 to-amber-950/20 backdrop-blur-2xl rounded-3xl border border-amber-400/30 flex items-center justify-between hover:border-amber-400/60 hover:shadow-[0_0_25px_rgba(245,158,11,0.2)] active:scale-[0.98] transition-all group text-left'
       >
         <div className='flex items-center gap-3.5 min-w-0'>
           <div className='w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0 shadow-inner group-hover:scale-105 transition-transform'>
@@ -2260,7 +2296,7 @@ const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pe
         {/* Champions League */}
         <button
           onClick={() => { setActiveCompId('C1'); setCompView('main'); setView('competition'); }}
-          className='p-4 bg-gradient-to-b from-blue-950/60 to-slate-900/60 backdrop-blur-xl rounded-3xl border border-blue-500/30 flex flex-col items-center text-center gap-2.5 hover:border-blue-400/60 hover:shadow-[0_0_25px_rgba(59,130,246,0.25)] active:scale-[0.98] transition-all group'
+          className='p-4 bg-gradient-to-b from-blue-950/40 to-slate-900/40 backdrop-blur-2xl rounded-3xl border border-blue-500/30 flex flex-col items-center text-center gap-2.5 hover:border-blue-400/60 hover:shadow-[0_0_25px_rgba(59,130,246,0.25)] active:scale-[0.98] transition-all group'
         >
           <div className='w-12 h-12 rounded-2xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-blue-300 shadow-inner group-hover:scale-110 transition-transform'>
             <Trophy size={24} className='text-blue-300 drop-shadow-[0_0_8px_rgba(96,165,250,0.8)]' />
@@ -2280,7 +2316,7 @@ const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pe
         {/* Copa del Mundo */}
         <button
           onClick={() => { setActiveCompId('C2'); setCompView('main'); setView('competition'); }}
-          className='p-4 bg-gradient-to-b from-emerald-950/60 to-slate-900/60 backdrop-blur-xl rounded-3xl border border-emerald-500/30 flex flex-col items-center text-center gap-2.5 hover:border-emerald-400/60 hover:shadow-[0_0_25px_rgba(52,211,153,0.25)] active:scale-[0.98] transition-all group'
+          className='p-4 bg-gradient-to-b from-emerald-950/40 to-slate-900/40 backdrop-blur-2xl rounded-3xl border border-emerald-500/30 flex flex-col items-center text-center gap-2.5 hover:border-emerald-400/60 hover:shadow-[0_0_25px_rgba(52,211,153,0.25)] active:scale-[0.98] transition-all group'
         >
           <div className='w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-300 shadow-inner group-hover:scale-110 transition-transform'>
             <Globe size={24} className='text-emerald-300 drop-shadow-[0_0_8px_rgba(52,211,153,0.8)]' />
@@ -2372,15 +2408,15 @@ const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pe
                       {isPending ? (
                         <button
                           onClick={() => onSimulateLeague && onSimulateLeague(id)}
-                          className='shrink-0 px-3 py-1.5 bg-amber-500/90 hover:bg-amber-400 text-slate-950 rounded-xl text-[9px] font-black uppercase italic tracking-wider active:scale-95 transition-all flex items-center gap-1 shadow-md'
+                          className='shrink-0 px-3 py-1.5 bg-slate-800/90 hover:bg-slate-700/90 text-slate-200 rounded-xl text-[9px] font-black uppercase italic tracking-wider active:scale-95 transition-colors flex items-center gap-1.5 border border-white/10'
                         >
-                          <Dices size={13} />
+                          <Dices size={13} className='text-slate-300' />
                           <span>Simular</span>
                         </button>
                       ) : (
                         <button
                           onClick={() => { setActiveCompId(id); setCompView('main'); setView('competition'); }}
-                          className='shrink-0 w-8 h-8 rounded-xl bg-white/5 hover:bg-white/15 text-slate-300 hover:text-white flex items-center justify-center transition-all'
+                          className='shrink-0 w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition-colors'
                         >
                           <ArrowRight size={14} />
                         </button>
@@ -2774,7 +2810,7 @@ const ConfigPanel = ({ initialComp, compId, onSave, onCancel, onTotalReset }) =>
             <div className='flex items-center justify-between'>
               <div className='flex items-center gap-2.5'>
                 <div className='w-10 h-10 rounded-2xl bg-indigo-500/20 flex items-center justify-center border border-indigo-500/40 text-indigo-300 shadow-inner'>
-                  <Globe size={22} className='text-indigo-400 animate-pulse' />
+                  <Globe size={22} className='text-indigo-300' />
                 </div>
                 <div>
                   <h3 className='text-sm sm:text-base font-black uppercase italic text-white'>Copa del Mundo</h3>
@@ -5716,9 +5752,87 @@ function DiceFootballApp() {
 
   // Simulación de todo el torneo Champions League restante hasta coronar al campeón
   const simulateAllCareerChampions = () => {
+    const seasonNow = seasonState.season || 1;
     setComps(prev => {
-      const c1 = prev['C1'];
-      if (!c1 || c1.phase === 'Terminado' || c1.showWinner) return prev;
+      let next = { ...prev };
+      let c1 = next['C1'];
+
+      // Si las ligas aún no han finalizado o C1 no tiene equipos inicializados
+      if (!c1?.teams?.length) {
+        LEAGUE_IDS.forEach(compId => {
+          const comp = prev[compId];
+          if (!comp || comp.type !== 'league') return;
+          let upd = { ...comp };
+          const runDivToFinish = (teamsKey: string, mdKey: string, histKey: string, winKey: string) => {
+            let guard = 0;
+            const total = divTotalRounds(upd[teamsKey]);
+            while ((upd[mdKey] || 0) < total && guard++ < 80) {
+              const res = simulateDivisionMatchday(upd[teamsKey], upd[mdKey] || 0, upd[histKey] || []);
+              if (!res) break;
+              upd = {
+                ...upd,
+                [teamsKey]: res.updatedTeams,
+                [mdKey]: res.nextMatchday,
+                [histKey]: res.newHistory,
+                [winKey]: res.isFinished ? true : upd[winKey]
+              };
+            }
+          };
+          runDivToFinish('teams', 'matchday', 'history', 'showWinner');
+          runDivToFinish('teams2', 'matchday2', 'history2', 'showWinner2');
+
+          if (leagueSeasonOver(upd)) {
+            upd.previousStandings = buildStandingsSnapshot(upd.teams) || upd.previousStandings || null;
+            upd.previousStandings2 = buildStandingsSnapshot(upd.teams2) || upd.previousStandings2 || null;
+          }
+          next[compId] = upd;
+        });
+
+        const seasonTitles = [];
+        LEAGUE_IDS.forEach(id => {
+          const c = next[id];
+          if (!c) return;
+          const r1 = buildSeasonRecord(c.teams, seasonNow);
+          const r2 = buildSeasonRecord(c.teams2, seasonNow);
+          if (r1) seasonTitles.push({ compId: id, compName: c.name, type: 'league', div: 1, winner: r1.champion, season: seasonNow });
+          if (r2) seasonTitles.push({ compId: id, compName: c.name, type: 'league', div: 2, winner: r2.champion, season: seasonNow });
+        });
+        registerTitles(seasonTitles);
+
+        LEAGUE_IDS.forEach(id => {
+          const c = next[id];
+          if (!c) return;
+          const withHistory = registerSeasonSummary(c, seasonNow);
+          next[id] = {
+            ...withHistory,
+            previousStandings: buildStandingsSnapshot(c.teams) || c.previousStandings || null,
+            previousStandings2: buildStandingsSnapshot(c.teams2) || c.previousStandings2 || null
+          };
+        });
+
+        const careerQualifiedName = (() => {
+          if (!career.active || !career.teamId || career.div !== 1) return null;
+          const comp = next[career.compId];
+          const table = [...(comp?.teams || [])].sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
+          const pos = table.findIndex(t => t.id === career.teamId) + 1;
+          return pos > 0 && pos <= CL_SPOTS ? table[pos - 1].name : null;
+        })();
+
+        const cl = getAutoFillData('C1', next, careerQualifiedName ? [careerQualifiedName] : []);
+        if (cl) {
+          const mine = careerQualifiedName ? (cl.teams || []).find(t => t.name === careerQualifiedName) : null;
+          c1 = {
+            ...next['C1'], ...cl,
+            name: next['C1']?.name || 'Champions League',
+            careerTeamName: careerQualifiedName || null,
+            careerTeamId: mine?.id || null,
+            userTeamId: mine?.id || cl.userTeamId
+          };
+          next['C1'] = c1;
+        }
+      }
+
+      if (!c1 || c1.phase === 'Terminado' || c1.showWinner) return next;
       const finishedC1 = simulateEntireCupToFinish(c1);
       if (finishedC1.showWinner) {
         const final = finishedC1.bracket?.Final?.[0] || finishedC1.bracket?.Final;
@@ -5730,10 +5844,12 @@ function DiceFootballApp() {
         archiveCompetition('C1', 1, clWinner, finishedC1);
       }
       return {
-        ...prev,
+        ...next,
         C1: finishedC1
       };
     });
+    setCareer(c => (c.active ? { ...c, clSeason: seasonNow } : c));
+    setSeasonState(s => ({ ...s, phase: 'champions', globalMatchday: 38 }));
   };
 
 
@@ -7424,8 +7540,8 @@ function DiceFootballApp() {
                         setActiveCompId('C1');
                         setCompView('main');
                         setView('competition');
-                      }} className="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white py-3.5 rounded-2xl text-[10px] font-black uppercase italic tracking-widest shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2 border border-blue-400/40">
-                        <Trophy size={15} className="text-yellow-300 animate-pulse" /> Ir a Champions League
+                      }} className="w-full bg-slate-900/50 hover:bg-slate-800/60 backdrop-blur-md text-white py-3.5 rounded-2xl text-[10px] font-black uppercase italic tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2 border border-blue-500/30">
+                        <Trophy size={15} className="text-amber-300" /> Ir a Champions League
                       </button>
                     )}
                     <button onClick={() => { setChampionModalTab('stats'); setChampionModalDiv(1); updateActiveComp({ showWinner: false, showWinner2: false }); }} className='w-full bg-slate-800/80 border border-white/10 text-slate-200 py-3.5 rounded-2xl text-[10px] font-black uppercase italic tracking-widest active:scale-95 transition-all'>Cerrar</button>
@@ -7549,8 +7665,8 @@ function DiceFootballApp() {
                 </p>
               </div>
               {leaguePendingNow && (
-                <button onClick={() => simulateLeagueToGlobal(activeCompId)} className='bg-amber-500/90 text-slate-950 px-4 py-3 rounded-2xl text-[9px] font-black uppercase italic tracking-widest shadow-xl active:scale-95 transition-all flex items-center gap-1.5'>
-                  <Dices size={14}/> Simular
+                <button onClick={() => simulateLeagueToGlobal(activeCompId)} className='bg-slate-800/50 hover:bg-slate-700/60 backdrop-blur-md px-4 py-3 rounded-2xl text-[9px] font-black uppercase italic tracking-widest active:scale-95 transition-all flex items-center gap-1.5 border border-white/10 text-slate-200'>
+                  <Dices size={14} className='text-slate-300' /> Simular
                 </button>
               )}
             </div>
@@ -7653,7 +7769,7 @@ function DiceFootballApp() {
               </div>
               <div className='flex flex-col items-center mt-4'>
                 <span className='text-xs font-black text-white/70 italic mb-1 drop-shadow-sm'>VS</span>
-                <div className='w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center animate-pulse border border-white/30 shadow-inner'><Play size={20} className='ml-1 text-white' /></div>
+                <div className='w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20 shadow-inner'><Play size={20} className='ml-1 text-white' /></div>
               </div>
               <div className='flex flex-col items-center w-24'>
                 <Shield color1={awayTeam?.color1} color2={awayTeam?.color2} initial={awayTeam?.name} size='lg' isFlag={awayTeam?.isFlag} />
@@ -7669,28 +7785,28 @@ function DiceFootballApp() {
               const isDone = currentMatchday >= schedule.length;
               if (isLeague && isDone) {
                  return (
-                   <button disabled className='w-full bg-slate-800 text-slate-400 py-4 rounded-2xl text-[10px] font-black uppercase italic tracking-widest shadow-inner border border-white/10'>
+                   <button disabled className='w-full bg-slate-800/60 text-slate-400 py-4 rounded-2xl text-[10px] font-black uppercase italic tracking-widest shadow-inner border border-white/10'>
                      Temporada Finalizada
                    </button>
                  );
               }
               if (isLeague && !canPlayGlobalMatchday) {
                  return (
-                   <button disabled className='w-full bg-slate-800 text-slate-400 py-4 rounded-2xl text-[10px] font-black uppercase italic tracking-widest shadow-inner border border-white/10'>
+                   <button disabled className='w-full bg-slate-800/60 text-slate-400 py-4 rounded-2xl text-[10px] font-black uppercase italic tracking-widest shadow-inner border border-white/10'>
                      Esperando Jornada Global {globalMatchday + 1}
                    </button>
                  );
               }
               return (
                 <div className='space-y-2'>
-                <button onClick={() => startMatch(homeId, awayId, isDiv2)} className='w-full bg-white/95 text-blue-900 py-4 rounded-2xl text-xs font-black uppercase italic tracking-widest shadow-xl active:scale-95 transition-all flex flex-col items-center justify-center'>
+                <button onClick={() => startMatch(homeId, awayId, isDiv2)} className='w-full bg-slate-800/90 hover:bg-slate-700/90 text-white py-4 rounded-2xl text-xs font-black uppercase italic tracking-widest border border-white/20 active:scale-95 transition-colors flex flex-col items-center justify-center'>
                   <span>{activeComp.phase === 'Final' ? 'Gran Final' : activeComp.phase === 'TercerPuesto' ? 'Partido por 3º Puesto' : ('Jugar ' + (isLeague || activeComp.phase === 'groups' ? 'Jornada ' + (currentMatchday + 1) : activeComp.phase + (activeCompId === 'C1' ? (activeComp.matchday % 2 === 0 ? ' (Ida)' : ' (Vuelta)') : '')))}</span>
-                  <span className='text-[7px] opacity-60 mt-0.5 tracking-normal'>{homeTeam?.opp} vs {awayTeam?.opp} TIROS DISPONIBLES</span>
+                  <span className='text-[7px] opacity-60 mt-0.5 tracking-normal text-slate-300'>{homeTeam?.opp} vs {awayTeam?.opp} TIROS DISPONIBLES</span>
 
                 </button>
                 {isLeague && leaguePendingNow && (
-                  <button onClick={() => simulateLeagueToGlobal(activeCompId)} className='w-full bg-slate-900/60 border border-white/15 text-slate-100 py-3 rounded-2xl text-[10px] font-black uppercase italic tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2'>
-                    <Dices size={14}/> Simular Jornada {currentMatchday + 1}
+                  <button onClick={() => simulateLeagueToGlobal(activeCompId)} className='w-full bg-slate-800/90 hover:bg-slate-700/90 border border-white/15 text-slate-200 py-3.5 rounded-2xl text-[10px] font-black uppercase italic tracking-widest active:scale-95 transition-colors flex items-center justify-center gap-2'>
+                    <Dices size={15} className='text-slate-300' /> Simular Jornada {currentMatchday + 1}
                   </button>
                 )}
                 {!isLeague && (
@@ -7698,15 +7814,15 @@ function DiceFootballApp() {
                     <button
                       onClick={() => processCupRound(null)}
                       disabled={cupAutoSim}
-                      className='bg-slate-900/60 border border-white/15 text-slate-100 py-3 rounded-2xl text-[9px] font-black uppercase italic tracking-widest active:scale-95 transition-all flex items-center justify-center gap-1.5 disabled:opacity-40'
+                      className='bg-slate-800/90 hover:bg-slate-700/90 border border-white/15 text-slate-200 py-3.5 rounded-2xl text-[9px] font-black uppercase italic tracking-widest active:scale-95 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-40'
                     >
-                      <Dices size={14}/> Simular {activeComp.phase === 'groups' ? 'Jornada' : 'Ronda'}
+                      <Dices size={14} className='text-slate-300' /> Simular {activeComp.phase === 'groups' ? 'Jornada' : 'Ronda'}
                     </button>
                     <button
                       onClick={() => setCupAutoSim(v => !v)}
-                      className={'py-3 rounded-2xl text-[9px] font-black uppercase italic tracking-widest active:scale-95 transition-all flex items-center justify-center gap-1.5 border ' + (cupAutoSim ? 'bg-red-600/80 border-red-300/40 text-white' : 'bg-amber-500/90 border-amber-300/40 text-slate-950')}
+                      className={'py-3.5 rounded-2xl text-[9px] font-black uppercase italic tracking-widest active:scale-95 transition-colors flex items-center justify-center gap-1.5 border ' + (cupAutoSim ? 'bg-red-900/80 border-red-500/40 text-red-200' : 'bg-slate-800/90 hover:bg-slate-700/90 border-white/15 text-slate-200')}
                     >
-                      {cupAutoSim ? (<><X size={14}/> Detener</>) : (<><Wand2 size={14}/> Simular Todo</>)}
+                      {cupAutoSim ? (<><X size={14}/> Detener</>) : (<><Wand2 size={14} className='text-slate-300' /> Simular Todo</>)}
                     </button>
                   </div>
                 )}
@@ -8180,7 +8296,7 @@ function DiceFootballApp() {
         <div className='flex justify-between items-center mb-4'>
           <button onClick={() => setCompView('main')} className='p-2 bg-slate-900/30 backdrop-blur-md border border-white/10 rounded-xl text-slate-200 active:scale-95 transition-all'><ChevronLeft /></button>
           <div className='flex flex-col items-center gap-1'>
-            <div className='px-4 py-1 bg-red-600/80 backdrop-blur-md rounded-full text-[9px] font-black uppercase italic animate-pulse shadow-md'>En Vivo</div>
+            <div className='px-4 py-1 bg-red-900/60 backdrop-blur-md rounded-full text-[9px] font-black uppercase italic border border-red-500/20 text-red-200 shadow-sm'>En Vivo</div>
             <span className='text-[8px] font-black uppercase italic text-slate-300 tracking-wider'>
               {activeComp.phase === 'Final' ? '🏆 Gran Final' : activeComp.phase === 'TercerPuesto' ? '🥉 3º Puesto' : isLeague || activeComp.phase === 'groups' ? `📅 Jornada ${currentMatchday + 1}` : `⚔️ ${activeComp.phase}${activeCompId === 'C1' ? (activeComp.matchday % 2 === 0 ? ' — Ida' : ' — Vuelta') : ''}`}
             </span>
@@ -8211,7 +8327,7 @@ function DiceFootballApp() {
                   <div className='text-xl font-black italic text-blue-300 tabular-nums drop-shadow-md'>(pen {matchState.penalties.scoreH} - {matchState.penalties.scoreA})</div>
                   {matchState.penalties.shotsH < 5 || matchState.penalties.shotsA < 5 ? (
                     <div className='flex justify-between w-full text-[7px] font-bold text-slate-300 uppercase mt-1'><span>Res H: {5 - matchState.penalties.shotsH}</span><span>Res A: {5 - matchState.penalties.shotsA}</span></div>
-                  ) : <div className='text-[7px] font-bold text-yellow-400 uppercase mt-1 animate-pulse'>¡Muerte Súbita!</div>}
+                  ) : <div className='text-[7px] font-bold text-amber-400 uppercase mt-1'>¡Muerte Súbita!</div>}
                   <div className='text-[7px] font-bold text-slate-200 uppercase mt-1 bg-black/50 backdrop-blur-sm px-2 py-0.5 rounded text-center'>{matchState.penalties.phase === 'att' ? '⚽ Preparando Disparo' : '🧤 ¡El portero se prepara!'}</div>
                 </div>
               )}
@@ -8286,21 +8402,55 @@ function DiceFootballApp() {
     return null;
   };
 
+  const isWorldCupActive = Boolean(
+    view === 'competition' && (
+      activeCompId === 'C2' ||
+      comps[activeCompId]?.id === 'C2' ||
+      comps[activeCompId]?.isWorldCup ||
+      comps[activeCompId]?.name?.toLowerCase().includes('copa del mundo') ||
+      comps[activeCompId]?.name?.toLowerCase().includes('mundial') ||
+      comps[activeCompId]?.name?.toLowerCase().includes('world cup')
+    )
+  );
+
   return (
-    <div className='relative min-h-screen selection:bg-blue-500/30 font-sans text-slate-100 overflow-hidden'>
-      {/* Champions League Night Stadium Background */}
+    <div className='relative min-h-screen selection:bg-cyan-500/30 font-sans text-slate-100 overflow-hidden'>
+      {/* Champions League Night Stadium Background (Default & All Other Modes) */}
       <div 
-        className='fixed inset-0 bg-cover bg-center bg-no-repeat z-0 scale-105 transition-transform duration-1000'
+        className={`fixed inset-0 bg-cover bg-center bg-no-repeat z-0 scale-105 transition-all duration-700 ${
+          isWorldCupActive ? 'opacity-0 pointer-events-none' : 'opacity-100'
+        }`}
         style={{ backgroundImage: `url(${championsStadiumBg})` }}
       />
-      {/* Deep Night Atmosphere & Stadium Lights Vignette */}
-      <div className='fixed inset-0 bg-gradient-to-b from-slate-950/80 via-slate-950/75 to-slate-950/95 z-0 backdrop-blur-[1.5px] pointer-events-none' />
-      <div className='fixed inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-500/25 via-indigo-900/10 to-transparent z-0 pointer-events-none' />
-      <div className='fixed inset-0 bg-[radial-gradient(circle_at_bottom,_var(--tw-gradient-stops))] from-emerald-500/10 via-transparent to-transparent z-0 pointer-events-none' />
+
+      {/* World Cup Daytime Stadium Background with Lush Grass (Only in World Cup Interface) */}
+      <div 
+        className={`fixed inset-0 bg-cover bg-center bg-no-repeat z-0 scale-105 transition-all duration-700 ${
+          isWorldCupActive ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        style={{ backgroundImage: `url(${worldCupStadiumDayBg})` }}
+      />
+
+      {/* Lighting & Atmosphere Layers: Clean, Subtle, Dark Stadium Vignette */}
+      {isWorldCupActive ? (
+        <>
+          {/* Daylight Stadium Vignette & Natural Contrast */}
+          <div className='fixed inset-0 bg-gradient-to-b from-slate-950/60 via-slate-900/40 to-slate-950/80 z-0 backdrop-blur-[0.5px] pointer-events-none transition-all duration-500' />
+          {/* Subtle Ambient Light (Static & Soft) */}
+          <div className='fixed -bottom-20 inset-x-0 h-80 bg-emerald-950/30 blur-3xl z-0 pointer-events-none' />
+        </>
+      ) : (
+        <>
+          {/* Deep Night Atmosphere & Stadium Lights Vignette */}
+          <div className='fixed inset-0 bg-gradient-to-b from-slate-950/75 via-slate-950/60 to-slate-950/90 z-0 backdrop-blur-[0.5px] pointer-events-none transition-all duration-500' />
+          {/* Subtle Soft Ambient Light (Static & Relaxing) */}
+          <div className='fixed top-0 inset-x-0 h-72 bg-blue-950/20 blur-3xl z-0 pointer-events-none' />
+        </>
+      )}
 
       <div className='relative z-10 max-w-md mx-auto min-h-screen flex flex-col'>
         <AnimatePresence mode='wait'>
-          {view === 'hub' && <motion.div key='hub' className='flex-grow flex flex-col' initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><HubView career={career} onOpenCareer={openCareer} setView={setView} setActiveCompId={setActiveCompId} setCompView={setCompView} comps={comps} seasonState={seasonState} pendingLeagueIds={pendingLeagueIds} allLeaguesFinished={allLeaguesFinished} championsFinished={championsFinished} onSimulateLeague={simulateLeagueToGlobal} onSimulateAll={simulateAllPendingLeagues} onNewSeason={startNewGlobalSeason} /></motion.div>}
+          {view === 'hub' && <motion.div key='hub' className='flex-grow flex flex-col' initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><HubView career={career} onOpenCareer={openCareer} setView={setView} setActiveCompId={setActiveCompId} setCompView={setCompView} comps={comps} seasonState={seasonState} pendingLeagueIds={pendingLeagueIds} allLeaguesFinished={allLeaguesFinished} championsFinished={championsFinished} onSimulateLeague={simulateLeagueToGlobal} onSimulateAll={simulateAllPendingLeagues} onNewSeason={startNewGlobalSeason} onSimulateChampions={simulateAllCareerChampions} /></motion.div>}
           {view === 'rules' && <motion.div key='rules' className='flex-grow flex flex-col' initial={{ x: 300, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -300, opacity: 0 }}><RulesView setView={setView} /></motion.div>}
           {view === 'archive' && <motion.div key='archive' className='flex-grow flex flex-col' initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}><ArchiveView selectedArchiveEntry={selectedArchiveEntry} setSelectedArchiveEntry={setSelectedArchiveEntry} setView={setView} archive={archive} /></motion.div>}
           {view === 'competition' && <motion.div key='comp' className='flex-grow flex flex-col' initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 1.1, opacity: 0 }}><CompetitionView /></motion.div>}

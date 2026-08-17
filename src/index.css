@@ -31,6 +31,22 @@ button, input, select, textarea {
   font-family: inherit;
 }
 
+/* High performance, instant-response buttons */
 button {
   cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  transition: opacity 0.1s ease-out, background-color 0.1s ease-out, border-color 0.1s ease-out, transform 0.08s ease-out;
 }
+
+button:active {
+  transform: scale(0.98);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+
