@@ -1016,7 +1016,7 @@ export const CareerView = ({
                   </span>
                 )}
                 {activeInjury && (
-                  <span className='px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/40 text-[8px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm animate-pulse'>
+                  <span className='px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/40 text-[8px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm'>
                     <AlertTriangle size={11} className='text-red-400' />
                     Baja temporal: -1 {activeInjury.label}
                   </span>
@@ -1335,15 +1335,15 @@ export const CareerView = ({
                       <div className='grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1'>
                         <button
                           onClick={onSimulateGlobalMatchday || onSimulateWorld}
-                          className='w-full bg-amber-500/90 hover:bg-amber-400 text-slate-950 py-3 rounded-xl text-[9px] font-black uppercase italic tracking-widest active:scale-95 transition-all shadow-md flex items-center justify-center gap-1.5'
+                          className='w-full bg-slate-800/50 hover:bg-slate-700/60 backdrop-blur-md text-slate-200 py-3 rounded-xl text-[9px] font-black uppercase italic tracking-widest active:scale-95 transition-all flex items-center justify-center gap-1.5 border border-white/10'
                         >
-                          <Dices size={14} /> Simular Jornada Global {currentGlobalMd}
+                          <Dices size={14} className='text-slate-300' /> Simular Jornada Global {currentGlobalMd}
                         </button>
                         <button
                           onClick={onSimulateAllRemainingLeagues}
-                          className='w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white py-3 rounded-xl text-[9px] font-black uppercase italic tracking-widest active:scale-95 transition-all shadow-md flex items-center justify-center gap-1.5 border border-blue-400/30'
+                          className='w-full bg-slate-800/50 hover:bg-slate-700/60 backdrop-blur-md text-slate-200 py-3 rounded-xl text-[9px] font-black uppercase italic tracking-widest active:scale-95 transition-all flex items-center justify-center gap-1.5 border border-white/10'
                         >
-                          <FastForward size={14} /> Simular Resto de Ligas ({remainingGlobalMatchdays} J)
+                          <FastForward size={14} className='text-slate-300' /> Simular Resto de Ligas ({remainingGlobalMatchdays} J)
                         </button>
                       </div>
                     </div>
@@ -1351,22 +1351,52 @@ export const CareerView = ({
 
                   <div className='space-y-2 pt-1'>
                     {/* Botón directo de Champions League cuando el equipo está clasificado o en disputa */}
-                    {isClQualified && (
+                    {isClQualified && !championsFinished && (
+                      <div className='grid grid-cols-1 sm:grid-cols-2 gap-2'>
+                        <button
+                          onClick={() => {
+                            if (!allLeaguesFinished && !championsFinished && onOpenChampions) {
+                              onOpenChampions();
+                            }
+                            setTab('cl');
+                          }}
+                          className='w-full bg-blue-600 hover:bg-blue-500 text-white py-3.5 rounded-2xl text-[10px] font-black uppercase italic tracking-widest active:scale-95 transition-all shadow-md flex items-center justify-center gap-2 border border-blue-400/40'
+                        >
+                          <Trophy size={16} className='text-amber-300' />
+                          <span>Jugar Champions League</span>
+                        </button>
+                        {onSimulateAllChampions && (
+                          <button
+                            onClick={onSimulateAllChampions}
+                            className='w-full bg-blue-700 hover:bg-blue-600 text-white py-3.5 rounded-2xl text-[10px] font-black uppercase italic tracking-widest active:scale-95 transition-all shadow-md flex items-center justify-center gap-2 border border-blue-400/30'
+                          >
+                            <Dices size={16} className='text-blue-200' />
+                            <span>Simular Champions</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Si no está clasificado a Champions pero la Champions europea sigue pendiente */}
+                    {!isClQualified && !championsFinished && onSimulateAllChampions && (
                       <button
-                        onClick={() => {
-                          if (!allLeaguesFinished && !championsFinished && onOpenChampions) {
-                            onOpenChampions();
-                          }
-                          setTab('cl');
-                        }}
-                        className='w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white py-3.5 rounded-2xl text-[10px] font-black uppercase italic tracking-widest active:scale-95 transition-all shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2 border border-blue-400/40'
+                        onClick={onSimulateAllChampions}
+                        className='w-full bg-blue-600 hover:bg-blue-500 text-white py-3.5 rounded-2xl text-[10px] font-black uppercase italic tracking-widest active:scale-95 transition-all shadow-md flex items-center justify-center gap-2 border border-blue-400/40'
                       >
-                        <Trophy size={16} className='text-yellow-300 animate-pulse' />
-                        {championsFinished
-                          ? 'Ver Hub de Champions League (Finalizada)'
-                          : !allLeaguesFinished
-                            ? 'Simular Resto de Ligas y Jugar Champions'
-                            : 'Jugar Champions League'}
+                        <Trophy size={16} className='text-amber-300' />
+                        <Dices size={16} className='text-blue-200' />
+                        <span>Simular Champions League</span>
+                      </button>
+                    )}
+
+                    {/* Ver Champions ya finalizada si está clasificado */}
+                    {isClQualified && championsFinished && (
+                      <button
+                        onClick={() => setTab('cl')}
+                        className='w-full bg-slate-800 hover:bg-slate-700 text-white py-3.5 rounded-2xl text-[10px] font-black uppercase italic tracking-widest active:scale-95 transition-all shadow-md flex items-center justify-center gap-2 border border-blue-400/20'
+                      >
+                        <Trophy size={16} className='text-blue-300' />
+                        <span>Ver Hub de Champions League (Finalizada)</span>
                       </button>
                     )}
 
@@ -1374,9 +1404,9 @@ export const CareerView = ({
                     {(championsFinished || allLeaguesFinished) && onNewSeason && (
                       <button
                         onClick={onNewSeason}
-                        className='w-full bg-gradient-to-r from-yellow-500 to-amber-600 text-slate-950 py-3.5 rounded-2xl text-[10px] font-black uppercase italic tracking-widest shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2'
+                        className='w-full bg-amber-500 hover:bg-amber-400 text-slate-950 py-3.5 rounded-2xl text-[10px] font-black uppercase italic tracking-widest shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 border border-amber-300/60'
                       >
-                        <RotateCcw size={15} /> Iniciar Nueva Temporada Global
+                        <RotateCcw size={15} className='text-slate-950 stroke-[2.5]' /> Iniciar Nueva Temporada Global
                       </button>
                     )}
 
@@ -1424,7 +1454,7 @@ export const CareerView = ({
                     </p>
                     {currentWeekInfo.isMarketOpen ? (
                       <div className='flex items-center gap-2 text-[8px] font-black uppercase text-emerald-400 pt-1 border-t border-white/5'>
-                        <span className='w-2 h-2 rounded-full bg-emerald-400 animate-pulse' />
+                        <span className='w-2 h-2 rounded-full bg-emerald-400' />
                         Mercado Laboral Abierto: puedes postularte a vacantes en la pestaña "Empleo"
                       </div>
                     ) : (
@@ -2393,7 +2423,7 @@ export const CareerView = ({
                 <Panel className='p-5 bg-gradient-to-br from-sky-950/40 to-slate-900/80 border-sky-500/30 space-y-4'>
                   <div className='flex items-center justify-between'>
                     <div className='flex items-center gap-2'>
-                      <span className='inline-block w-2.5 h-2.5 rounded-full bg-sky-400 animate-pulse' />
+                      <span className='inline-block w-2.5 h-2.5 rounded-full bg-sky-400' />
                       <span className='text-xs font-black uppercase tracking-wider text-sky-300'>
                         Candidatura en Revisión Activa
                       </span>
@@ -2444,7 +2474,7 @@ export const CareerView = ({
                       <p className='text-[9px] font-black uppercase tracking-widest text-sky-400'>Ofertas y Banquillos</p>
                       {currentWeekInfo.isMarketOpen ? (
                         <span className='text-[8px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1'>
-                          <span className='w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse' />
+                          <span className='w-1.5 h-1.5 rounded-full bg-emerald-400' />
                           Mercado Abierto (Semana {currentWeekInfo.week})
                         </span>
                       ) : (
@@ -2706,7 +2736,7 @@ export const CareerView = ({
                                       Expira en {weeksLeft} sem.
                                     </span>
                                   ) : (
-                                    <span className='text-[8px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 inline-flex items-center gap-1 animate-pulse'>
+                                    <span className='text-[8px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 inline-flex items-center gap-1'>
                                       <AlertTriangle size={10} className='text-amber-400' />
                                       ¡Última semana!
                                     </span>
@@ -2944,6 +2974,7 @@ export const CareerView = ({
           if (onOpenChampions) onOpenChampions();
           setTab('cl');
         }}
+        onSimulateChampions={onSimulateAllChampions}
         onNewSeason={onNewSeason}
         isClQualified={isClQualified}
         championsFinished={championsFinished}
@@ -3302,8 +3333,8 @@ export const CareerMatchView = ({ matchState, rolling, onRoll, onFinish, ui }) =
       <div className='flex justify-between items-center mb-4 py-2'>
         <div className='w-10' />
         <div className='flex flex-col items-center gap-1'>
-          <div className={`px-4 py-1 backdrop-blur-md rounded-full text-[9px] font-black uppercase italic animate-pulse shadow-md ${
-            isChampions ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white border border-blue-400/40' : 'bg-red-600/80 text-white'
+          <div className={`px-4 py-1 backdrop-blur-md rounded-full text-[9px] font-black uppercase italic shadow-sm ${
+            isChampions ? 'bg-blue-900/60 text-white border border-blue-400/30' : 'bg-red-900/60 text-white border border-red-500/30'
           }`}>
             {isChampions ? '⭐ UEFA Champions League' : 'En Directo'}
           </div>

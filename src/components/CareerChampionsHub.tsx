@@ -408,8 +408,8 @@ export const CareerChampionsHub: React.FC<CareerChampionsHubProps> = ({
         <div className='relative z-10 flex flex-col gap-4'>
           <div className='flex items-center justify-between'>
             <div className='flex items-center gap-3'>
-              <div className='w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-blue-800 flex items-center justify-center shadow-lg border border-blue-400/40'>
-                <Trophy size={24} className='text-yellow-300 animate-pulse' />
+              <div className='w-12 h-12 rounded-2xl bg-slate-800/80 flex items-center justify-center border border-white/10'>
+                <Trophy size={24} className='text-amber-300' />
               </div>
               <div>
                 <div className='flex items-center gap-2'>
@@ -818,9 +818,9 @@ export const CareerChampionsHub: React.FC<CareerChampionsHubProps> = ({
                 <div className='grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1'>
                   <button
                     onClick={onPlayChampionsMatch}
-                    className='w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white py-4 rounded-2xl text-[10px] font-black uppercase italic tracking-widest active:scale-95 transition-all shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2 border border-blue-400/40'
+                    className='w-full bg-slate-900/50 hover:bg-slate-800/60 backdrop-blur-md text-white py-4 rounded-2xl text-[10px] font-black uppercase italic tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2 border border-blue-400/30'
                   >
-                    <Dices size={16} className='text-yellow-300 animate-pulse' />
+                    <Dices size={16} className='text-slate-300' />
                     Jugar Partido con Dados
                   </button>
 

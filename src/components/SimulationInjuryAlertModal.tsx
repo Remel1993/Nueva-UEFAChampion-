@@ -57,7 +57,7 @@ export const SimulationInjuryAlertModal: React.FC<SimulationInjuryAlertModalProp
         {/* CABECERA DE ALERTA MÉDICA */}
         <div className='px-6 py-5 bg-gradient-to-r from-red-950/80 via-red-900/50 to-slate-900 border-b border-red-500/30 flex items-center justify-between'>
           <div className='flex items-center gap-3'>
-            <div className='w-11 h-11 rounded-2xl bg-red-500/20 text-red-400 border border-red-500/40 flex items-center justify-center shrink-0 shadow-lg animate-pulse'>
+            <div className='w-11 h-11 rounded-2xl bg-red-500/20 text-red-400 border border-red-500/40 flex items-center justify-center shrink-0 shadow-lg'>
               <AlertTriangle size={22} />
             </div>
             <div>

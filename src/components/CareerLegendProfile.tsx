@@ -76,10 +76,8 @@ export const CareerLegendProfile: React.FC<CareerLegendProfileProps> = ({
 
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-500 via-yellow-400 to-yellow-200 p-0.5 shadow-lg flex items-center justify-center shrink-0">
-              <div className="w-full h-full bg-slate-950 rounded-[0.9rem] flex items-center justify-center">
-                <Trophy size={26} className="text-yellow-400 animate-pulse" />
-              </div>
+            <div className="w-14 h-14 rounded-2xl bg-slate-800/90 border border-amber-500/30 flex items-center justify-center shrink-0">
+              <Trophy size={26} className="text-amber-400" />
             </div>
             <div>
               <p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Historial y Rango de Leyenda</p>
@@ -146,9 +144,9 @@ export const CareerLegendProfile: React.FC<CareerLegendProfileProps> = ({
               initial={{ width: 0 }}
               animate={{ width: `${Math.min(100, Math.max(4, reputation))}%` }}
               transition={{ duration: 0.8, ease: 'easeOut' }}
-              className="h-full bg-gradient-to-r from-amber-600 via-amber-400 to-yellow-300 rounded-full relative shadow-[0_0_12px_rgba(245,158,11,0.6)]"
+              className="h-full bg-slate-400 rounded-full relative"
             >
-              <div className="absolute right-0 top-0 bottom-0 w-2 bg-white/80 rounded-full animate-pulse" />
+              <div className="absolute right-0 top-0 bottom-0 w-2 bg-white/80 rounded-full" />
             </motion.div>
           </div>
 
