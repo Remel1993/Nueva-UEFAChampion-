@@ -180,7 +180,7 @@ Este directorio está preparado para que puedas subir las imágenes de los escud
 - `magdeburg.png` → 1. FC Magdeburg
 - `elversberg.png` → SV Elversberg
 - `eintracht_braunschweig.png` → Eintracht Braunschweig
-- `p_munster.png` → Preussen Münster
+- `preussen_münster` → Preussen Münster
 - `ssv_ulm.png` → SSV Ulm 1846
 - `jahn_regensburg.png` → Jahn Regensburg
 
