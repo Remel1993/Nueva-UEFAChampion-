@@ -350,7 +350,7 @@ const PRESETS_2 = {
     { name: 'E. Braunschweig', att: 2, opp: 2, def: 3, color1: '#ffcc00', color2: '#0033a0', league: 'DE' },
     { name: 'Kaiserslautern', att: 3, opp: 3, def: 3, color1: '#e30613', color2: '#ffffff', league: 'DE' },
     { name: 'SSV Ulm', att: 1, opp: 2, def: 2, color1: '#000000', color2: '#ffffff', league: 'DE' },
-    { name: 'Preußen Münster', att: 2, opp: 2, def: 3, color1: '#00a650', color2: '#000000', league: 'DE' },
+    { name: 'Preussen Münster', att: 2, opp: 2, def: 3, color1: '#00a650', color2: '#000000', league: 'DE' },
     { name: 'Jahn Regensburg', att: 1, opp: 2, def: 2, color1: '#ffffff', color2: '#e30613', league: 'DE' }
   ],
   FR: [
