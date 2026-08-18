@@ -405,7 +405,7 @@ const PRESETS_2 = {
     { name: 'Trabzonspor', att: 3, opp: 3, def: 3, color1: '#8b0000', color2: '#87ceeb', league: 'MI' },
     { name: 'Hajduk Split', att: 2, opp: 3, def: 3, color1: '#ffffff', color2: '#0033a0', league: 'MI' },
     { name: 'FC Midtjylland', att: 4, opp: 4, def: 3, color1: '#000000', color2: '#e30613', league: 'MI' },
-    { name: 'Brøndby IF', att: 2, opp: 3, def: 3, color1: '#ffd700', color2: '#0033a0', league: 'MI' },
+    { name: 'Brondby IF', att: 2, opp: 3, def: 3, color1: '#ffd700', color2: '#0033a0', league: 'MI' },
     { name: 'Sturm Graz', att: 3, opp: 3, def: 3, color1: '#000000', color2: '#ffffff', league: 'MI' },
     { name: 'Viktoria Plzen', att: 3, opp: 3, def: 3, color1: '#e30613', color2: '#0033a0', league: 'MI' },
     { name: 'Ferencvaros', att: 3, opp: 3, def: 3, color1: '#00a650', color2: '#ffffff', league: 'MI' },
