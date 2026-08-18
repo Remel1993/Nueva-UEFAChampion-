@@ -1,120 +1,79 @@
 import React from 'react';
-import { motion } from 'motion/react';
-import { AlertTriangle, Trash2, Archive, X, Trophy, ArrowRight } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { AlertTriangle, Archive, Trash2, X } from 'lucide-react';
 
 interface DeleteCareerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirmArchiveAndReset?: () => void;
-  onArchiveAndReset?: () => void;
-  onConfirmHardDelete?: () => void;
-  onHardDelete?: () => void;
   career: any;
   team: any;
+  onArchiveAndReset: () => void;
+  onHardDelete: () => void;
   ui?: any;
 }
 
 export const DeleteCareerModal: React.FC<DeleteCareerModalProps> = ({
   isOpen,
   onClose,
-  onConfirmArchiveAndReset,
-  onArchiveAndReset,
-  onConfirmHardDelete,
-  onHardDelete,
   career,
-  team
+  team,
+  onArchiveAndReset,
+  onHardDelete,
+  ui,
 }) => {
   if (!isOpen) return null;
 
-  const managerName = career?.manager || 'Mánager';
-  const teamName = team?.name || 'Club';
-  const leagues = career?.trophies?.leagues || 0;
-  const champions = career?.trophies?.champions || 0;
-  const promotions = career?.trophies?.promotions || 0;
-  const hasHistory = leagues > 0 || champions > 0 || promotions > 0 || (career?.seasonHistory?.length || 0) > 0 || (career?.stats?.matches || 0) > 0;
-
-  const handleArchive = () => {
-    if (typeof onConfirmArchiveAndReset === 'function') {
-      onConfirmArchiveAndReset();
-    } else if (typeof onArchiveAndReset === 'function') {
-      onArchiveAndReset();
-    }
-    onClose();
-  };
-
-  const handleHard = () => {
-    if (typeof onConfirmHardDelete === 'function') {
-      onConfirmHardDelete();
-    } else if (typeof onHardDelete === 'function') {
-      onHardDelete();
-    }
-    onClose();
-  };
-
   return (
-    <div className='fixed inset-0 z-[90] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto'>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
       <motion.div
-        initial={{ scale: 0.92, y: 16, opacity: 0 }}
-        animate={{ scale: 1, y: 0, opacity: 1 }}
-        exit={{ opacity: 0, scale: 0.92 }}
-        className='w-full max-w-md bg-gradient-to-b from-slate-900 via-slate-950 to-black rounded-[2rem] border border-red-500/40 p-5 sm:p-6 shadow-2xl space-y-4 my-auto'
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="relative w-full max-w-md overflow-hidden rounded-3xl border border-rose-500/40 bg-slate-950 p-6 text-white shadow-2xl space-y-4"
       >
-        <div className='w-12 h-12 rounded-2xl bg-red-500/20 text-red-400 border border-red-500/30 flex items-center justify-center mx-auto'>
-          <Trash2 size={24} />
-        </div>
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 p-1.5 rounded-full bg-white/5 text-slate-400 hover:text-white hover:bg-white/10"
+        >
+          <X className="w-4 h-4" />
+        </button>
 
-        <div className='text-center space-y-1.5'>
-          <h3 className='text-base sm:text-lg font-black uppercase italic text-white'>
-            ¿Finalizar o Eliminar Proyecto de Carrera?
-          </h3>
-          <p className='text-xs font-bold text-amber-300 uppercase tracking-wider'>
-            {managerName} · {teamName}
-          </p>
-          <p className='text-[10px] font-bold text-slate-300 leading-relaxed max-w-sm mx-auto'>
-            Esta acción concluirá tu ciclo actual de mánager. Puedes archivar todos tus logros y vitrina de trofeos en el <strong>Salón de la Fama histórico</strong> antes de iniciar una nueva aventura.
-          </p>
-        </div>
-
-        {hasHistory && (
-          <div className='bg-black/40 rounded-2xl p-3.5 border border-white/5 space-y-1.5'>
-            <p className='text-[8px] font-black uppercase tracking-widest text-amber-400'>
-              Balance del Proyecto Actual:
-            </p>
-            <div className='flex items-center justify-around text-center text-[9px] pt-1'>
-              <div>
-                <p className='text-xs font-black text-white'>{career?.reputation || 10}</p>
-                <p className='text-[7.5px] text-slate-400 uppercase font-bold'>Reputación</p>
-              </div>
-              <div>
-                <p className='text-xs font-black text-yellow-300'>🏆 {leagues}L · ⭐ {champions}UCL</p>
-                <p className='text-[7.5px] text-slate-400 uppercase font-bold'>Palmarés</p>
-              </div>
-              <div>
-                <p className='text-xs font-black text-emerald-300'>{career?.seasonHistory?.length || 1} Temp.</p>
-                <p className='text-[7.5px] text-slate-400 uppercase font-bold'>Trayectoria</p>
-              </div>
-            </div>
+        <div className="flex items-center gap-3">
+          <div className="p-3 rounded-2xl bg-rose-500/20 text-rose-400 border border-rose-500/30">
+            <AlertTriangle className="w-6 h-6" />
           </div>
-        )}
+          <div>
+            <span className="text-[10px] font-black uppercase tracking-wider text-rose-400">
+              Gestión de Partida
+            </span>
+            <h3 className="text-lg font-black uppercase text-white">
+              ¿Reiniciar o Borrar Carrera?
+            </h3>
+          </div>
+        </div>
 
-        <div className='space-y-2.5 pt-2'>
+        <p className="text-xs text-slate-300 leading-relaxed">
+          Estás a punto de finalizar la trayectoria de <strong className="text-amber-300">{career?.manager || 'tu mánager'}</strong> con <strong className="text-white">{team?.name || 'este club'}</strong>. Puedes archivar sus hazañas para conservarlas en el historial o borrarla por completo.
+        </p>
+
+        <div className="space-y-2.5 pt-2">
           <button
-            onClick={handleArchive}
-            className='w-full bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-wider shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2'
+            onClick={onArchiveAndReset}
+            className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white font-black text-xs uppercase flex items-center justify-center gap-2 shadow-lg cursor-pointer"
           >
-            <Archive size={15} /> Archivar en Historial y Empezar Nueva Carrera
+            <Archive className="w-4 h-4" /> Archivar en Salón de la Fama y Nueva Carrera
           </button>
 
           <button
-            onClick={handleHard}
-            className='w-full bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/40 py-3 rounded-2xl text-[10px] font-black uppercase tracking-wider active:scale-95 transition-all flex items-center justify-center gap-2'
+            onClick={onHardDelete}
+            className="w-full py-3 px-4 rounded-2xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 font-bold text-xs uppercase flex items-center justify-center gap-2 cursor-pointer transition-colors"
           >
-            <Trash2 size={14} /> Eliminar Definitivamente sin Guardar
+            <Trash2 className="w-4 h-4" /> Eliminar Definitivamente sin Archivar
           </button>
 
           <button
             onClick={onClose}
-            className='w-full bg-slate-800/80 hover:bg-slate-700 text-slate-300 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-wider active:scale-95 transition-all'
+            className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 text-xs font-bold uppercase"
           >
             Cancelar
           </button>
@@ -123,3 +82,4 @@ export const DeleteCareerModal: React.FC<DeleteCareerModalProps> = ({
     </div>
   );
 };
+export default DeleteCareerModal;
