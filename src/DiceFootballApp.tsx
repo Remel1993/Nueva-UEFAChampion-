@@ -2255,10 +2255,7 @@ const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pe
         )}
 
         {allLeaguesFinished && championsFinished && (
-          <button
-            onClick={onNewSeason}
-            className='w-full py-3.5 px-4 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-2xl text-[11px] font-black uppercase italic tracking-wider active:scale-[0.98] transition-colors flex items-center justify-center gap-2 border border-amber-300/60 shadow-md'
-          >
+          
             <RotateCcw size={16} className='text-slate-950 stroke-[2.5]' />
             <span>Iniciar Temporada {seasonState?.season ? seasonState.season + 1 : 2}</span>
           </button>
