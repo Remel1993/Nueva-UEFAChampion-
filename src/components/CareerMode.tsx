@@ -1379,7 +1379,10 @@ export const CareerView = ({
 
                     {/* Si no está clasificado a Champions pero la Champions europea sigue pendiente */}
                     {!isClQualified && !championsFinished && onSimulateAllChampions && (
-                      
+                      <button
+                        onClick={onSimulateAllChampions}
+                        className='w-full bg-blue-600 hover:bg-blue-500 text-white py-3.5 rounded-2xl text-[10px] font-black uppercase italic tracking-widest active:scale-95 transition-all shadow-md flex items-center justify-center gap-2 border border-blue-400/40'
+                      >
                         <Trophy size={16} className='text-amber-300' />
                         <Dices size={16} className='text-blue-200' />
                         <span>Simular Champions League</span>
