@@ -1277,15 +1277,6 @@ export const CareerView = ({
                           </span>
                         )}
                       </div>
-                      {lastPlayedMatchOverall.aggregateInfo.qualified !== null && (
-                        <span className={`px-2.5 py-1 rounded-full font-black uppercase tracking-wider text-[8px] ${
-                          lastPlayedMatchOverall.aggregateInfo.qualified
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                            : 'bg-red-500/20 text-red-300 border border-red-500/30'
-                        }`}>
-                          {lastPlayedMatchOverall.aggregateInfo.qualified ? '✅ ¡Clasificado a siguiente ronda!' : '❌ Eliminado en esta ronda'}
-                        </span>
-                      )}
                     </div>
                   )}
 

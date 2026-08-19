@@ -852,14 +852,6 @@ export const CareerChampionsHub: React.FC<CareerChampionsHubProps> = ({
                 </div>
 
                 <div className='flex flex-col sm:flex-row gap-2 justify-center pt-2'>
-                  {onSimulateAllChampions && !isFinished && (
-                    <button
-                      onClick={onSimulateAllChampions}
-                      className='bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-5 py-3.5 rounded-2xl text-[10px] font-black uppercase italic tracking-widest active:scale-95 transition-all shadow flex items-center justify-center gap-2'
-                    >
-                      <Zap size={14} className='text-yellow-300' /> Simular Torneo Completo
-                    </button>
-                  )}
                   {onOpenNewSeason && isFinished && (
                     <button
                       onClick={onOpenNewSeason}
@@ -939,14 +931,6 @@ export const CareerChampionsHub: React.FC<CareerChampionsHubProps> = ({
                 </div>
 
                 <div className='flex flex-col sm:flex-row gap-2 justify-center pt-2'>
-                  {onSimulateAllChampions && !isFinished && (
-                    <button
-                      onClick={onSimulateAllChampions}
-                      className='bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-5 py-3.5 rounded-2xl text-[10px] font-black uppercase italic tracking-widest active:scale-95 transition-all shadow flex items-center justify-center gap-2'
-                    >
-                      <Zap size={14} className='text-yellow-300' /> Simular Resto de la Champions League
-                    </button>
-                  )}
                   {onOpenNewSeason && isFinished && (
                     <button
                       onClick={onOpenNewSeason}

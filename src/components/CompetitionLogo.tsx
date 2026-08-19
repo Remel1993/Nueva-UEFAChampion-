@@ -12,15 +12,15 @@ interface CompetitionLogoProps {
 
 // Configuración de rutas y nombres de archivo en /public/logos/
 const LOGO_PATHS: Record<string, string[]> = {
-  'L1': ['/logos/laliga.png', '/logos/L1.png', '/logos/la_liga.png', '/logos/liga_espanola.png'],
-  'L2': ['/logos/seriea.png', '/logos/L2.png', '/logos/serie_a.png', '/logos/liga_italiana.png'],
-  'L3': ['/logos/premier.png', '/logos/L3.png', '/logos/premier_league.png', '/logos/liga_inglesa.png'],
-  'L4': ['/logos/bundesliga.png', '/logos/L4.png', '/logos/liga_alemana.png'],
-  'L5': ['/logos/eredivisie.png', '/logos/L5.png', '/logos/liga_holandesa.png'],
-  'L6': ['/logos/ligue1.png', '/logos/L6.png', '/logos/ligue_1.png', '/logos/liga_francesa.png'],
-  'L7': ['/logos/uefa.png', '/logos/L7.png', '/logos/miscelanea.png'],
-  'C1': ['/logos/champions.png', '/logos/C1.png', '/logos/champions_league.png', '/logos/ucl.png'],
-  'C2': ['/logos/fifa.png', '/logos/C2.png', '/logos/worldcup.png', '/logos/copa_del_mundo.png', '/logos/mundial.png'],
+  'L1': ['/logos/laliga.png', '/logos/laliga.svg', '/logos/laliga.webp', '/logos/laliga.jpg', '/logos/L1.png', '/logos/la_liga.png', '/logos/liga_espanola.png'],
+  'L2': ['/logos/seriea.png', '/logos/seriea.svg', '/logos/seriea.webp', '/logos/seriea.jpg', '/logos/L2.png', '/logos/serie_a.png', '/logos/liga_italiana.png'],
+  'L3': ['/logos/premier.png', '/logos/premier.svg', '/logos/premier.webp', '/logos/premier.jpg', '/logos/L3.png', '/logos/premier_league.png', '/logos/liga_inglesa.png'],
+  'L4': ['/logos/bundesliga.png', '/logos/bundesliga.svg', '/logos/bundesliga.webp', '/logos/bundesliga.jpg', '/logos/L4.png', '/logos/liga_alemana.png'],
+  'L5': ['/logos/eredivisie.png', '/logos/eredivisie.svg', '/logos/eredivisie.webp', '/logos/eredivisie.jpg', '/logos/L5.png', '/logos/liga_holandesa.png'],
+  'L6': ['/logos/ligue1.png', '/logos/ligue1.svg', '/logos/ligue1.webp', '/logos/ligue1.jpg', '/logos/L6.png', '/logos/ligue_1.png', '/logos/liga_francesa.png'],
+  'L7': ['/logos/uefa.png', '/logos/uefa.svg', '/logos/uefa.webp', '/logos/uefa.jpg', '/logos/L7.png', '/logos/miscelanea.png'],
+  'C1': ['/logos/champions.png', '/logos/champions.svg', '/logos/champions.webp', '/logos/champions.jpg', '/logos/C1.png', '/logos/champions_league.png', '/logos/ucl.png'],
+  'C2': ['/logos/fifa.png', '/logos/fifa.svg', '/logos/fifa.webp', '/logos/fifa.jpg', '/logos/C2.png', '/logos/worldcup.png', '/logos/copa_del_mundo.png', '/logos/mundial.png'],
 };
 
 // ==========================================
