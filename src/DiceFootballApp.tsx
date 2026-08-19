@@ -1667,11 +1667,15 @@ const ArchiveView = ({ setView, archive, selectedArchiveEntry, setSelectedArchiv
             {/* Torneos Internacionales */}
             <div className='grid grid-cols-2 gap-2 mb-3'>
               <button onClick={() => setPalmaresModal({ title: 'Palmarés Champions League', compId: 'C1', div: 1 })} className='flex items-center justify-center gap-2.5 rounded-2xl border border-blue-400/30 bg-gradient-to-r from-blue-500/20 to-indigo-500/10 px-3 py-2.5 text-center active:scale-95 transition-all shadow-md hover:border-blue-400/60'>
-                <CompetitionLogo compId="C1" size={20} showBackground={false} />
+                <div className='w-7 h-7 rounded-lg bg-white border border-slate-200/90 shadow-sm flex items-center justify-center p-0.5 shrink-0'>
+                  <CompetitionLogo compId="C1" size={20} showBackground={false} />
+                </div>
                 <span className='text-[9px] font-black uppercase italic tracking-wider text-blue-200'>Champions League</span>
               </button>
               <button onClick={() => setPalmaresModal({ title: 'Palmarés Copa del Mundo', compId: 'C2', div: 1 })} className='flex items-center justify-center gap-2.5 rounded-2xl border border-sky-400/30 bg-gradient-to-r from-sky-500/20 to-blue-500/10 px-3 py-2.5 text-center active:scale-95 transition-all shadow-md hover:border-sky-400/60'>
-                <CompetitionLogo compId="C2" size={24} showBackground={false} />
+                <div className='w-7 h-7 rounded-lg bg-white border border-slate-200/90 shadow-sm flex items-center justify-center p-0.5 shrink-0'>
+                  <CompetitionLogo compId="C2" size={22} showBackground={false} />
+                </div>
                 <span className='text-[9px] font-black uppercase italic tracking-wider text-sky-200'>Copa del Mundo</span>
               </button>
             </div>
@@ -1684,7 +1688,9 @@ const ArchiveView = ({ setView, archive, selectedArchiveEntry, setSelectedArchiv
                   onClick={() => setPalmaresModal({ title: `Palmarés ${l.fullName} (${archiveLeagueDiv}ª Div)`, compId: l.id, div: archiveLeagueDiv })}
                   className='flex items-center gap-2 rounded-xl border border-white/10 bg-slate-950/60 hover:bg-amber-500/10 hover:border-amber-400/30 px-2.5 py-2 text-left active:scale-95 transition-all'
                 >
-                  <CompetitionLogo compId={l.id} size={22} className='w-7 h-7 shrink-0 !rounded-lg' />
+                  <div className='w-7 h-7 rounded-lg bg-white border border-slate-200/90 shadow-sm flex items-center justify-center p-0.5 shrink-0'>
+                    <CompetitionLogo compId={l.id} size={22} showBackground={false} />
+                  </div>
                   <div className='min-w-0 flex-grow'>
                     <p className='text-[9px] font-black uppercase italic truncate text-slate-200'>{l.name}</p>
                     <p className='text-[7px] font-bold text-amber-400/80 uppercase tracking-widest'>{archiveLeagueDiv}ª División</p>
@@ -1963,8 +1969,8 @@ const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pe
           onClick={() => { setActiveCompId('C1'); setCompView('main'); setView('competition'); }}
           className='p-4 bg-gradient-to-b from-blue-950/40 to-slate-900/40 backdrop-blur-2xl rounded-3xl border border-blue-500/30 flex flex-col items-center text-center gap-2.5 hover:border-blue-400/60 hover:shadow-[0_0_25px_rgba(59,130,246,0.25)] active:scale-[0.98] transition-all group'
         >
-          <div className='w-14 h-14 rounded-2xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform p-1.5'>
-            <CompetitionLogo compId="C1" size={38} showBackground={false} />
+          <div className='w-16 h-16 rounded-2xl bg-white border border-slate-200/90 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform p-2'>
+            <CompetitionLogo compId="C1" size={44} showBackground={false} />
           </div>
           <div className='min-w-0 w-full'>
             <h4 className='text-xs font-black uppercase italic text-white tracking-wide truncate'>
@@ -1983,8 +1989,8 @@ const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pe
           onClick={() => { setActiveCompId('C2'); setCompView('main'); setView('competition'); }}
           className='p-4 bg-gradient-to-b from-sky-950/40 to-slate-900/40 backdrop-blur-2xl rounded-3xl border border-sky-500/30 flex flex-col items-center text-center gap-2.5 hover:border-sky-400/60 hover:shadow-[0_0_25px_rgba(56,189,248,0.25)] active:scale-[0.98] transition-all group'
         >
-          <div className='w-14 h-14 rounded-2xl bg-sky-500/20 border border-sky-400/30 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform p-1.5'>
-            <CompetitionLogo compId="C2" size={42} showBackground={false} />
+          <div className='w-16 h-16 rounded-2xl bg-white border border-slate-200/90 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform p-2'>
+            <CompetitionLogo compId="C2" size={44} showBackground={false} />
           </div>
           <div className='min-w-0 w-full'>
             <h4 className='text-xs font-black uppercase italic text-white tracking-wide truncate'>
@@ -2057,8 +2063,8 @@ const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pe
                         onClick={() => { setActiveCompId(id); setCompView('main'); setView('competition'); }}
                         className='flex items-center gap-3 min-w-0 flex-1 text-left'
                       >
-                        <div className='shrink-0 flex items-center justify-center'>
-                          <CompetitionLogo compId={id} size={30} className='w-10 h-10 shadow-md' />
+                        <div className='shrink-0 flex items-center justify-center w-11 h-11 rounded-2xl bg-white border border-slate-200/90 shadow-md p-1'>
+                          <CompetitionLogo compId={id} size={28} showBackground={false} />
                         </div>
                         <div className='min-w-0'>
                           <h4 className='text-xs font-black uppercase italic text-white tracking-wide truncate'>
@@ -7228,16 +7234,18 @@ function DiceFootballApp() {
         </AnimatePresence>
 
         {/* HEADER RESPONSIVO OPTIMIZADO PARA MÓVIL */}
-        <header className='flex items-center justify-between gap-2 mb-4 bg-slate-900/50 backdrop-blur-md p-2.5 sm:p-3 rounded-2xl border border-white/10'>
-          <div className='flex items-center gap-2.5 min-w-0'>
-            <button onClick={() => setView('hub')} className='p-2 bg-slate-900/80 hover:bg-slate-800 rounded-xl text-slate-200 border border-white/10 active:scale-95 transition-all shrink-0'><ChevronLeft size={18} /></button>
+        <header className='flex items-center justify-between gap-2.5 mb-4 bg-slate-900/50 backdrop-blur-md p-2.5 sm:p-3.5 rounded-2xl border border-white/10'>
+          <div className='flex items-center gap-3 min-w-0'>
+            <button onClick={() => setView('hub')} className='p-2.5 bg-slate-900/80 hover:bg-slate-800 rounded-xl text-slate-200 border border-white/10 active:scale-95 transition-all shrink-0' title='Volver al Menú Principal'><ChevronLeft size={20} /></button>
             {activeCompId && (
-              <CompetitionLogo compId={activeCompId} size={24} className='w-8 h-8 shrink-0 !rounded-xl' />
+              <div className='w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white border border-slate-200/90 shadow-lg p-1.5 flex items-center justify-center shrink-0 hover:scale-105 transition-transform'>
+                <CompetitionLogo compId={activeCompId} size={36} showBackground={false} />
+              </div>
             )}
             <div className='min-w-0'>
-              <h2 className='text-sm sm:text-base font-black italic uppercase truncate drop-shadow-md text-white'>{activeComp?.name}</h2>
+              <h2 className='text-sm sm:text-base md:text-lg font-black italic uppercase truncate drop-shadow-md text-white'>{activeComp?.name}</h2>
               {activeComp.type !== 'league' && (
-                <span className='text-[8px] font-black text-blue-300 uppercase tracking-widest block truncate'>
+                <span className='text-[8px] sm:text-[9px] font-black text-blue-300 uppercase tracking-widest block truncate'>
                   {cupTournamentEnded ? '🏆 Torneo Finalizado' : `Fase: ${activeComp.phase}`}
                 </span>
               )}
