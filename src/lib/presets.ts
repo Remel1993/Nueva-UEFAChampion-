@@ -220,7 +220,7 @@ export const PRESETS_2: Record<string, TeamPreset[]> = {
     { name: 'Watford', att: 1, opp: 3, def: 2, color1: '#fbee21', color2: '#ed2127', league: 'EN' },
     { name: 'Bristol City', att: 2, opp: 2, def: 2, color1: '#e30613', color2: '#ffffff', league: 'EN' },
     { name: 'Swansea City', att: 2, opp: 3, def: 1, color1: '#ffffff', color2: '#000000', league: 'EN' },
-    { name: 'Preston N.E.', att: 1, opp: 2, def: 3, color1: '#ffffff', color2: '#000040', league: 'EN' },
+    { name: 'Preston NE.', att: 1, opp: 2, def: 3, color1: '#ffffff', color2: '#000040', league: 'EN' },
     { name: 'QPR', att: 1, opp: 3, def: 2, color1: '#ffffff', color2: '#0033a0', league: 'EN' },
     { name: 'Stoke City', att: 1, opp: 2, def: 3, color1: '#e30613', color2: '#ffffff', league: 'EN' },
     { name: 'Sheffield Wed', att: 1, opp: 2, def: 3, color1: '#0033a0', color2: '#ffffff', league: 'EN' },
