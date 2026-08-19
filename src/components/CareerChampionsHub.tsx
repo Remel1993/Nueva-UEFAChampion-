@@ -659,7 +659,9 @@ export const CareerChampionsHub: React.FC<CareerChampionsHubProps> = ({
 
                 <div className='flex items-center justify-between text-[8px] font-bold text-slate-400 px-1'>
                   <span>Balance Continental: +{lastPlayedChampionsMatch.pe || 0} PE ganados</span>
-                  <span className='text-amber-400 font-black'>+{lastPlayedChampionsMatch.rep || 0} Reputación</span>
+                  <span className={(lastPlayedChampionsMatch.rep || 0) > 0 ? 'text-emerald-400 font-black' : (lastPlayedChampionsMatch.rep || 0) < 0 ? 'text-rose-400 font-black' : 'text-slate-400 font-bold'}>
+                    {(lastPlayedChampionsMatch.rep || 0) > 0 ? `+${lastPlayedChampionsMatch.rep}` : `${lastPlayedChampionsMatch.rep || 0}`} Reputación
+                  </span>
                 </div>
               </div>
             )}

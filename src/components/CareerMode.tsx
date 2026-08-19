@@ -11,7 +11,7 @@ import {
 import {
   TIERS, CLASS_INFO, classOf, tierCaps, tacticalOptions, sameDist, peCostFor,
   repBand, objectiveFor, expectedPosition, readPerformance, seasonObjectives,
-  isSquadMaxed, careerSpells, CONTRACT_SEASONS, CL_SPOTS, signingRepBonus,
+  isSquadMaxed, careerSpells, CONTRACT_SEASONS, CL_SPOTS, getClSpots, signingRepBonus,
   generateRumors, getRejectionReason, getMarketVacancies, SPECIAL_OFFICE_WEEKS,
   getSpecialOfficeWeeks, calculateCurrentSeasonWeek, getContractObjectivesForTeam,
   calculateBoardConfidence, clPhaseLabel, getChampionsScheduledWeeks
@@ -122,10 +122,11 @@ const buildNews = ({
       tag: 'Champions',
       text: `${teamName} está en la Champions global${clPhaseLabel ? ` (${clPhaseLabel})` : ''}: Europa marca la temporada.`
     });
-  } else if (division === 1 && position && position <= CL_SPOTS + 2) {
+  } else if (division === 1 && position && position <= getClSpots(career?.compId) + 2) {
+    const clQuota = getClSpots(career?.compId);
     items.push({
       tag: 'Champions',
-      text: `La pelea por las ${CL_SPOTS} plazas de Champions está viva: ${teamName} marcha ${position}º de ${standingsSize || 20}.`
+      text: `La pelea por las ${clQuota} plazas de Champions está viva: ${teamName} marcha ${position}º de ${standingsSize || 20}.`
     });
   }
 
@@ -2363,7 +2364,9 @@ export const CareerView = ({
 
                               {item.played && (
                                 <div className='pt-1.5 border-t border-white/5 flex items-center justify-between text-[8px] font-bold'>
-                                  <span className='text-amber-300'>+{item.repEarned || 0} Rep</span>
+                                  <span className={(item.repEarned || 0) > 0 ? 'text-emerald-400 font-black' : (item.repEarned || 0) < 0 ? 'text-rose-400 font-black' : 'text-slate-400 font-bold'}>
+                                    {(item.repEarned || 0) > 0 ? `+${item.repEarned}` : (item.repEarned || 0)} Rep
+                                  </span>
                                   <span className='text-emerald-300'>+{item.peEarned || 0} PE</span>
                                 </div>
                               )}
