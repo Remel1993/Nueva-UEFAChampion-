@@ -11,7 +11,7 @@ import {
   Dice4, Dice5, Dice6, Globe, Shield as ShieldIcon, Info, ArrowRight, Dices,
   Wand2, Shuffle, ArrowUpCircle, ArrowDownCircle, AlertTriangle,
   Newspaper, TrendingUp, AlertCircle, Flame, Star, X, Megaphone, Eye, Briefcase,
-  Plus, Trash2, Flag, Sparkles
+  Plus, Trash2, Flag, Sparkles, Lock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { registerTitle, registerTitles } from '@/lib/palmares';
@@ -99,6 +99,7 @@ const getDefaultComps = () => {
     'L7': getLeagueData('Miscelánea A', 'MI'),
     'L8': getLeagueData('Miscelánea B', 'MB'),
     'C1': { id: 'C1', type: 'cup', name: 'Champions League', teams: [], matchday: 0, history: [], userTeamId: 1, showWinner: false, phase: 'groups', bracket: null, disqualified: false },
+    'C3': { id: 'C3', type: 'cup', name: 'Europa League', teams: [], matchday: 0, history: [], userTeamId: 1, showWinner: false, phase: 'Dieciseisavos', bracket: null, disqualified: false },
     'C2': { id: 'C2', type: 'cup', name: 'Copa del Mundo', teams: [], matchday: 0, history: [], userTeamId: 1, showWinner: false, phase: 'groups', bracket: null, disqualified: false }
   };
 };
@@ -531,9 +532,203 @@ const drawKnockoutGroups = (pool: any[], isWC?: boolean, randomize: boolean = tr
   };
 };
 
+const buildELPool = (compsState: any, forceNames: string[] = []) => {
+  const leagueCodeMap: Record<string, string> = { L1: 'ES', L2: 'IT', L3: 'EN', L4: 'DE', L5: 'NL', L6: 'FR', L7: 'MI', L8: 'MB' };
 
+  const getSource = (compKey: string) => {
+    const comp = compsState?.[compKey];
+    if (!comp || !Array.isArray(comp.teams)) return null;
+    if (comp.matchday >= 34 || comp.history?.length >= 34) {
+      const sorted = [...comp.teams].sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
+      return { origin: 'live', table: sorted, teams: comp.teams };
+    }
+    if (Array.isArray(comp.previousStandings) && comp.previousStandings.length > 0) {
+      return { origin: 'previous', table: comp.previousStandings, teams: comp.teams };
+    }
+    const sim = [...comp.teams].sort((a, b) => {
+      const pA = (a.att || 1) + (a.opp || 1) + (a.def || 1);
+      const pB = (b.att || 1) + (b.opp || 1) + (b.def || 1);
+      return pB - pA;
+    });
+    return { origin: 'sim', table: sim, teams: comp.teams };
+  };
+
+  const pullSlice = (compKey: string, start: number, end: number) => {
+    const src = getSource(compKey);
+    if (!src) return [];
+    const defLeague = leagueCodeMap[compKey] || 'EU';
+    const resolve = (row: any) => {
+      const live = src.teams.find((t: any) => t.id === row.id) || src.teams.find((t: any) => t.name === row.name);
+      const base = live || row;
+      return {
+        ...base,
+        league: base.league || defLeague,
+        elOrigin: src.origin,
+        elProvisional: src.origin === 'sim'
+      };
+    };
+    const ordered = src.table.map(resolve);
+    return ordered.slice(start, end);
+  };
+
+  const leagueKeys = ['L1', 'L3', 'L2', 'L4', 'L6', 'L5', 'L7', 'L8'];
+
+  // Clasificación de liga: Puestos 5º, 6º, 7º y 8º de cada una de las 8 ligas (índices 4, 5, 6 y 7)
+  const fifths: any[] = [];
+  const sixths: any[] = [];
+  const sevenths: any[] = [];
+  const eighths: any[] = [];
+
+  leagueKeys.forEach(k => {
+    const p5 = pullSlice(k, 4, 5)[0];
+    const p6 = pullSlice(k, 5, 6)[0];
+    const p7 = pullSlice(k, 6, 7)[0];
+    const p8 = pullSlice(k, 7, 8)[0];
+    if (p5) fifths.push(p5);
+    if (p6) sixths.push(p6);
+    if (p7) sevenths.push(p7);
+    if (p8) eighths.push(p8);
+  });
+
+  // 8 repescados de Champions League (3º puesto de cada grupo A-H de C1)
+  let championsThirds: any[] = [];
+  const clComp = compsState?.['C1'];
+  if (clComp && Array.isArray(clComp.groups) && clComp.groups.length === 8 && Array.isArray(clComp.teams)) {
+    championsThirds = clComp.groups.map((g: any) => {
+      const groupTeams = clComp.teams
+        .filter((t: any) => g.teamIds && g.teamIds.includes(t.id))
+        .sort((a: any, b: any) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
+      const third = groupTeams[2];
+      if (third) {
+        return {
+          ...third,
+          elOrigin: 'champions_third',
+          elProvisional: (clComp.matchday || 0) < 6
+        };
+      }
+      return null;
+    }).filter(Boolean);
+  }
+
+  // Si C1 aún no tiene 8 terceros definidos, se toman los 9ºs de liga como respaldo provisional
+  if (championsThirds.length < 8) {
+    const backupThirds: any[] = [];
+    leagueKeys.forEach(k => {
+      const p9 = pullSlice(k, 8, 9)[0];
+      if (p9) backupThirds.push(p9);
+    });
+    championsThirds = [...championsThirds, ...backupThirds].slice(0, 8);
+  }
+
+  return {
+    fifths: fifths.slice(0, 8),
+    sixths: sixths.slice(0, 8),
+    sevenths: sevenths.slice(0, 8),
+    eighths: eighths.slice(0, 8),
+    championsThirds: championsThirds.slice(0, 8)
+  };
+};
+
+const drawELKnockout = (elPool: { fifths: any[]; sixths: any[]; sevenths: any[]; eighths: any[]; championsThirds: any[] }) => {
+  const { fifths, sixths, sevenths, eighths, championsThirds } = elPool;
+
+  const shuffleArray = (arr: any[]) => {
+    const copy = [...arr];
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy;
+  };
+
+  // Cruces al azar: 5ºs vs 8ºs y 6ºs vs 7ºs
+  const shFifth = shuffleArray(fifths);
+  const shEighth = shuffleArray(eighths);
+  const shSixth = shuffleArray(sixths);
+  const shSeventh = shuffleArray(sevenths);
+
+  // Reindexar los 32 equipos de ligas (1 al 32)
+  const teams5 = shFifth.map((t, i) => ({ ...t, id: 1 + i, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }));
+  const teams8 = shEighth.map((t, i) => ({ ...t, id: 9 + i, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }));
+  const teams6 = shSixth.map((t, i) => ({ ...t, id: 17 + i, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }));
+  const teams7 = shSeventh.map((t, i) => ({ ...t, id: 25 + i, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }));
+
+  // Repescados de Champions League (33 al 40)
+  const teamsThirds = championsThirds.map((t, i) => ({ ...t, id: 33 + i, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }));
+
+  const allTeams = [...teams5, ...teams8, ...teams6, ...teams7, ...teamsThirds];
+
+  // 16 cruces directos en Dieciseisavos (Ida y Vuelta):
+  // D1..D8: 5ºs de liga vs 8ºs de liga
+  const matches5v8 = Array(8).fill(null).map((_, i) => ({
+    id: 'D' + (i + 1),
+    hId: teams5[i]?.id || (1 + i),
+    aId: teams8[i]?.id || (9 + i),
+    sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
+  }));
+
+  // D9..D16: 6ºs de liga vs 7ºs de liga
+  const matches6v7 = Array(8).fill(null).map((_, i) => ({
+    id: 'D' + (9 + i),
+    hId: teams6[i]?.id || (17 + i),
+    aId: teams7[i]?.id || (25 + i),
+    sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
+  }));
+
+  const dieciseisavos = [...matches5v8, ...matches6v7];
+
+  // Playoffs (8 cruces): Ganador (5º vs 8º) vs Ganador (6º vs 7º) para definir a los 8 clasificados de liga
+  const playoffs = Array(8).fill(null).map((_, i) => ({
+    id: 'P' + (i + 1),
+    hId: null,
+    aId: null,
+    sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
+  }));
+
+  // Octavos: Los 8 repescados de Champions League (33 a 40) como cabezas de serie (hId) esperando a los 8 ganadores de liga (aId = null)
+  const octavos = Array(8).fill(null).map((_, i) => ({
+    id: 'O' + (i + 1),
+    hId: teamsThirds[i]?.id || (33 + i),
+    aId: null,
+    sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
+  }));
+
+  const cuartos = Array(4).fill(null).map((_, i) => ({ id: 'Q' + (i + 1), hId: null, aId: null, sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null }));
+  const semis = Array(2).fill(null).map((_, i) => ({ id: 'S' + (i + 1), hId: null, aId: null, sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null }));
+  const final = [{ id: 'F1', hId: null, aId: null, sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null }];
+
+  return {
+    teams: allTeams,
+    groups: [],
+    matchday: 0,
+    history: [],
+    phase: 'Dieciseisavos',
+    showWinner: false,
+    disqualified: false,
+    userTeamId: allTeams[0]?.id || 1,
+    bracket: {
+      Dieciseisavos: dieciseisavos,
+      Playoffs: playoffs,
+      Octavos: octavos,
+      Cuartos: cuartos,
+      Semis: semis,
+      Final: final
+    },
+    participantsFrozen: true,
+    participantsLockedAt: Date.now(),
+    participantsSources: allTeams.map(t => ({
+      name: t.name,
+      origin: t.elOrigin || (t.id > 32 ? 'champions_third' : 'league_participant'),
+      provisional: !!t.elProvisional
+    }))
+  };
+};
 
 const getAutoFillData = (compId, compsState, forceNames = []) => {
+  if (compId === 'C3') {
+    const elPool = buildELPool(compsState, forceNames);
+    return drawELKnockout(elPool);
+  }
   const isWC = compId === 'C2';
   let pool = isWC ? buildDynamicWCPool({ randomize: true }) : buildCLPool(compsState, forceNames);
   pool = pool.map((t, i) => ({ ...t, id: i + 1, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }));
@@ -541,6 +736,10 @@ const getAutoFillData = (compId, compsState, forceNames = []) => {
 };
 
 const getShuffleData = (compId, compsState) => {
+  if (compId === 'C3') {
+    const elPool = buildELPool(compsState);
+    return drawELKnockout(elPool);
+  }
   const isWC = compId === 'C2';
   let pool = isWC ? buildDynamicWCPool({ randomize: true }) : buildCLPool(compsState);
   pool = pool.map((t, i) => ({ ...t, id: i + 1, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }));
@@ -1796,18 +1995,24 @@ const ArchiveView = ({ setView, archive, selectedArchiveEntry, setSelectedArchiv
             </div>
 
             {/* Torneos Internacionales */}
-            <div className='grid grid-cols-2 gap-2 mb-3'>
-              <button onClick={() => setPalmaresModal({ title: 'Palmarés Champions League', compId: 'C1', div: 1 })} className='flex items-center justify-center gap-2.5 rounded-2xl border border-blue-400/30 bg-gradient-to-r from-blue-500/20 to-indigo-500/10 px-3 py-2.5 text-center active:scale-95 transition-all shadow-md hover:border-blue-400/60'>
+            <div className='grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3'>
+              <button onClick={() => setPalmaresModal({ title: 'Palmarés Champions League', compId: 'C1', div: 1 })} className='flex items-center justify-center gap-2 rounded-2xl border border-blue-400/30 bg-gradient-to-r from-blue-500/20 to-indigo-500/10 px-2.5 py-2.5 text-center active:scale-95 transition-all shadow-md hover:border-blue-400/60'>
                 <div className='w-7 h-7 rounded-lg bg-white border border-slate-200/90 shadow-sm flex items-center justify-center p-0.5 shrink-0'>
                   <CompetitionLogo compId="C1" size={20} showBackground={false} />
                 </div>
-                <span className='text-[9px] font-black uppercase italic tracking-wider text-blue-200'>Champions League</span>
+                <span className='text-[8.5px] font-black uppercase italic tracking-wider text-blue-200 truncate'>Champions</span>
               </button>
-              <button onClick={() => setPalmaresModal({ title: 'Palmarés Copa del Mundo', compId: 'C2', div: 1 })} className='flex items-center justify-center gap-2.5 rounded-2xl border border-sky-400/30 bg-gradient-to-r from-sky-500/20 to-blue-500/10 px-3 py-2.5 text-center active:scale-95 transition-all shadow-md hover:border-sky-400/60'>
+              <button onClick={() => setPalmaresModal({ title: 'Palmarés Europa League', compId: 'C3', div: 1 })} className='flex items-center justify-center gap-2 rounded-2xl border border-amber-400/30 bg-gradient-to-r from-amber-500/20 to-orange-500/10 px-2.5 py-2.5 text-center active:scale-95 transition-all shadow-md hover:border-amber-400/60'>
+                <div className='w-7 h-7 rounded-lg bg-white border border-slate-200/90 shadow-sm flex items-center justify-center p-0.5 shrink-0'>
+                  <CompetitionLogo compId="C3" size={20} showBackground={false} />
+                </div>
+                <span className='text-[8.5px] font-black uppercase italic tracking-wider text-amber-200 truncate'>Europa League</span>
+              </button>
+              <button onClick={() => setPalmaresModal({ title: 'Palmarés Copa del Mundo', compId: 'C2', div: 1 })} className='flex items-center justify-center gap-2 rounded-2xl border border-sky-400/30 bg-gradient-to-r from-sky-500/20 to-blue-500/10 px-2.5 py-2.5 text-center active:scale-95 transition-all shadow-md hover:border-sky-400/60'>
                 <div className='w-7 h-7 rounded-lg bg-white border border-slate-200/90 shadow-sm flex items-center justify-center p-0.5 shrink-0'>
                   <CompetitionLogo compId="C2" size={22} showBackground={false} />
                 </div>
-                <span className='text-[9px] font-black uppercase italic tracking-wider text-sky-200'>Copa del Mundo</span>
+                <span className='text-[8.5px] font-black uppercase italic tracking-wider text-sky-200 truncate'>Mundial</span>
               </button>
             </div>
 
@@ -1840,7 +2045,7 @@ const ArchiveView = ({ setView, archive, selectedArchiveEntry, setSelectedArchiv
             </div>
           ) : (
             archive.map((entry, idx) => (
-              <button key={entry.id || idx} onClick={() => setSelectedArchiveEntry(entry)} className='w-full p-4 bg-slate-900/30 backdrop-blur-md rounded-3xl border border-white/10 flex items-center gap-4 hover:bg-slate-800/50 active:scale-95 transition-all text-left shadow-lg group'>
+              <button key={entry.id ? `arch-entry-${entry.id}-${entry.compId || ''}-${idx}` : `arch-${idx}`} onClick={() => setSelectedArchiveEntry(entry)} className='w-full p-4 bg-slate-900/30 backdrop-blur-md rounded-3xl border border-white/10 flex items-center gap-4 hover:bg-slate-800/50 active:scale-95 transition-all text-left shadow-lg group'>
                 <div className='w-12 h-12 rounded-2xl bg-yellow-500/20 flex items-center justify-center text-yellow-500 shrink-0 group-hover:scale-110 transition-transform'><Trophy size={24} /></div>
                 <div className='flex-grow overflow-hidden'>
                   <h3 className='text-sm font-black uppercase italic truncate text-white'>{entry.name} {entry.div === 2 ? '(2ª Div)' : ''}</h3>
@@ -1967,6 +2172,7 @@ const RulesView = ({ setView }) => (
 const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pendingLeagueIds, allLeaguesFinished, championsFinished, onSimulateLeague, onSimulateAll, onNewSeason, onSimulateChampions, career, onOpenCareer, onSyncPresets }) => {
   const [showLeagues, setShowLeagues] = useState(false);
   const [showSyncModal, setShowSyncModal] = useState(false);
+  const [helpModal, setHelpModal] = useState<null | { title: string; content: string }>(null);
   const globalMatchday = seasonState?.globalMatchday || 1;
   const pending = pendingLeagueIds || [];
   const leagues = [
@@ -2102,48 +2308,109 @@ const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pe
         </div>
       </button>
 
-      {/* TORNEOS ESTRELLA (CHAMPIONS LEAGUE & COPA DEL MUNDO) */}
-      <div className='grid grid-cols-2 gap-3'>
-        {/* Champions League */}
-        <button
-          onClick={() => { setActiveCompId('C1'); setCompView('main'); setView('competition'); }}
-          className='p-4 bg-gradient-to-b from-blue-950/40 to-slate-900/40 backdrop-blur-2xl rounded-3xl border border-blue-500/30 flex flex-col items-center text-center gap-2.5 hover:border-blue-400/60 hover:shadow-[0_0_25px_rgba(59,130,246,0.25)] active:scale-[0.98] transition-all group'
-        >
-          <div className='w-16 h-16 rounded-2xl bg-white border border-slate-200/90 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform p-2'>
-            <CompetitionLogo compId="C1" size={44} showBackground={false} />
-          </div>
-          <div className='min-w-0 w-full'>
-            <h4 className='text-xs font-black uppercase italic text-white tracking-wide truncate'>
-              {comps['C1']?.name || 'Champions League'}
-            </h4>
-            <div className='mt-1'>
-              <span className='text-[8px] font-black uppercase px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30 inline-block'>
-                {comps['C1']?.phase === 'groups' ? 'Fase Grupos' : comps['C1']?.phase || 'Grupos'}
-              </span>
-            </div>
-          </div>
-        </button>
+      {/* FRANJA HORIZONTAL: TORNEOS INTERNACIONALES (CHAMPIONS, UEFA & FIFA) */}
+      {(() => {
+        const clComp = comps['C1'];
+        const isChampionsRepescaReady = Boolean(clComp && (clComp.phase !== 'groups' || (clComp.matchday || 0) >= 6));
+        const elPhaseLabel = comps['C3']?.phase === 'Dieciseisavos' ? '1/16 Final' : comps['C3']?.phase || 'Eliminatorias';
 
-        {/* Copa del Mundo */}
-        <button
-          onClick={() => { setActiveCompId('C2'); setCompView('main'); setView('competition'); }}
-          className='p-4 bg-gradient-to-b from-sky-950/40 to-slate-900/40 backdrop-blur-2xl rounded-3xl border border-sky-500/30 flex flex-col items-center text-center gap-2.5 hover:border-sky-400/60 hover:shadow-[0_0_25px_rgba(56,189,248,0.25)] active:scale-[0.98] transition-all group'
-        >
-          <div className='w-16 h-16 rounded-2xl bg-white border border-slate-200/90 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform p-2'>
-            <CompetitionLogo compId="C2" size={44} showBackground={false} />
-          </div>
-          <div className='min-w-0 w-full'>
-            <h4 className='text-xs font-black uppercase italic text-white tracking-wide truncate'>
-              {comps['C2']?.name || 'Copa del Mundo'}
-            </h4>
-            <div className='mt-1'>
-              <span className='text-[8px] font-black uppercase px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-400/30 inline-block'>
-                {comps['C2']?.phase === 'groups' ? 'Fase Grupos' : comps['C2']?.phase || '32 Países'}
+        return (
+          <div className='w-full p-2.5 sm:p-3 bg-slate-900/60 backdrop-blur-2xl rounded-3xl border border-white/10 shadow-xl space-y-2'>
+            <div className='flex items-center justify-between px-1.5 pt-0.5'>
+              <span className='text-[10px] font-black uppercase italic tracking-widest text-slate-300 flex items-center gap-1.5'>
+                <Trophy size={13} className='text-amber-400' /> Torneos Internacionales
+              </span>
+              <span className='text-[8px] font-black uppercase px-2 py-0.5 rounded-full bg-white/5 text-slate-400 border border-white/10'>
+                UEFA & FIFA
               </span>
             </div>
+
+            <div className='grid grid-cols-3 gap-2 sm:gap-2.5'>
+              {/* Botón 1: UEFA Champions League */}
+              <button
+                onClick={() => { setActiveCompId('C1'); setCompView('main'); setView('competition'); }}
+                className='p-2.5 sm:p-3 bg-gradient-to-b from-blue-950/60 to-slate-900/60 backdrop-blur-xl rounded-2xl border border-blue-500/40 flex flex-col items-center text-center gap-2 hover:border-blue-400 hover:shadow-[0_0_20px_rgba(59,130,246,0.3)] active:scale-[0.97] transition-all group'
+              >
+                <div className='w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-white border border-slate-200/90 flex items-center justify-center shadow-md group-hover:scale-105 transition-transform p-1.5 shrink-0'>
+                  <CompetitionLogo compId="C1" size={32} showBackground={false} />
+                </div>
+                <div className='min-w-0 w-full'>
+                  <h4 className='text-[11px] sm:text-xs font-black uppercase italic text-white tracking-tight truncate'>
+                    Champions
+                  </h4>
+                  <div className='mt-0.5'>
+                    <span className='text-[7.5px] font-black uppercase px-1.5 py-0.5 rounded-md bg-blue-500/20 text-blue-300 border border-blue-400/30 inline-block truncate max-w-full'>
+                      {clComp?.phase === 'groups' ? `Grupos (J${clComp?.matchday || 0}/6)` : clComp?.phase || 'Fase Final'}
+                    </span>
+                  </div>
+                </div>
+              </button>
+
+              {/* Botón 2: UEFA Europa League (Bloqueado hasta repesca de Champions) */}
+              <button
+                onClick={() => {
+                  if (!isChampionsRepescaReady) {
+                    setHelpModal({
+                      title: 'UEFA Europa League · Esperando Repesca',
+                      content: 'La UEFA Europa League estará disponible una vez que la UEFA Champions League finalice su Fase de Grupos (Jornada 6).\n\nEn ese momento se confirmarán los 8 clubes repescados que obtendrán pase directo a los Octavos de Final para enfrentarse a los 8 clasificados de Liga.'
+                    });
+                    return;
+                  }
+                  setActiveCompId('C3'); setCompView('main'); setView('competition');
+                }}
+                className={`p-2.5 sm:p-3 backdrop-blur-xl rounded-2xl border flex flex-col items-center text-center gap-2 transition-all group ${
+                  isChampionsRepescaReady
+                    ? 'bg-gradient-to-b from-amber-950/60 to-slate-900/60 border-amber-500/40 hover:border-amber-400 hover:shadow-[0_0_20px_rgba(245,158,11,0.3)] active:scale-[0.97]'
+                    : 'bg-slate-900/40 border-amber-500/20 opacity-75 hover:opacity-90 active:scale-[0.98]'
+                }`}
+              >
+                <div className='relative w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-white border border-slate-200/90 flex items-center justify-center shadow-md group-hover:scale-105 transition-transform p-1.5 shrink-0'>
+                  <CompetitionLogo compId="C3" size={32} showBackground={false} />
+                  {!isChampionsRepescaReady && (
+                    <div className='absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center shadow-md'>
+                      <Lock size={10} className='stroke-[3]' />
+                    </div>
+                  )}
+                </div>
+                <div className='min-w-0 w-full'>
+                  <h4 className='text-[11px] sm:text-xs font-black uppercase italic text-white tracking-tight truncate'>
+                    Europa League
+                  </h4>
+                  <div className='mt-0.5'>
+                    <span className={`text-[7.5px] font-black uppercase px-1.5 py-0.5 rounded-md border inline-block truncate max-w-full ${
+                      isChampionsRepescaReady
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-400/30'
+                        : 'bg-amber-500/10 text-amber-300/80 border-amber-500/20'
+                    }`}>
+                      {isChampionsRepescaReady ? elPhaseLabel : '🔒 Repesca J6 C1'}
+                    </span>
+                  </div>
+                </div>
+              </button>
+
+              {/* Botón 3: FIFA Copa del Mundo */}
+              <button
+                onClick={() => { setActiveCompId('C2'); setCompView('main'); setView('competition'); }}
+                className='p-2.5 sm:p-3 bg-gradient-to-b from-sky-950/60 to-slate-900/60 backdrop-blur-xl rounded-2xl border border-sky-500/40 flex flex-col items-center text-center gap-2 hover:border-sky-400 hover:shadow-[0_0_20px_rgba(56,189,248,0.3)] active:scale-[0.97] transition-all group'
+              >
+                <div className='w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-white border border-slate-200/90 flex items-center justify-center shadow-md group-hover:scale-105 transition-transform p-1.5 shrink-0'>
+                  <CompetitionLogo compId="C2" size={32} showBackground={false} />
+                </div>
+                <div className='min-w-0 w-full'>
+                  <h4 className='text-[11px] sm:text-xs font-black uppercase italic text-white tracking-tight truncate'>
+                    Copa Mundial
+                  </h4>
+                  <div className='mt-0.5'>
+                    <span className='text-[7.5px] font-black uppercase px-1.5 py-0.5 rounded-md bg-sky-500/20 text-sky-300 border border-sky-400/30 inline-block truncate max-w-full'>
+                      {comps['C2']?.phase === 'groups' ? `Grupos (J${comps['C2']?.matchday || 0}/3)` : comps['C2']?.phase || '32 Países'}
+                    </span>
+                  </div>
+                </div>
+              </button>
+            </div>
           </div>
-        </button>
-      </div>
+        );
+      })()}
 
       {/* LIGAS NACIONALES (ACORDEÓN ELEGANTE) */}
       <section className='bg-slate-900/60 backdrop-blur-xl rounded-3xl border border-white/10 overflow-hidden shadow-xl'>
@@ -2157,7 +2424,7 @@ const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pe
             </div>
             <div className='min-w-0'>
               <h3 className='text-xs sm:text-sm font-black uppercase italic text-white tracking-wide truncate'>
-                Ligas Nacionales (7 Ligas)
+                Ligas Nacionales (8 Ligas)
               </h3>
               <p className='text-[9.5px] text-slate-300 font-bold uppercase tracking-wider mt-0.5'>
                 1ª y 2ª División · Ascensos y Descensos
@@ -2325,6 +2592,48 @@ const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pe
                   className='flex-1 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl text-xs font-black uppercase tracking-wider'
                 >
                   Sincronizar
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL INFORMATIVO / REPESCA */}
+      <AnimatePresence>
+        {helpModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className='fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4'
+            onClick={() => setHelpModal(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className='bg-slate-900 border border-amber-500/30 rounded-3xl p-5 max-w-sm w-full space-y-4 shadow-2xl'
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className='flex items-center gap-3'>
+                <div className='w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-400/30 flex items-center justify-center text-amber-400 shrink-0'>
+                  <Lock size={18} />
+                </div>
+                <div>
+                  <h3 className='text-sm font-black uppercase italic text-white'>{helpModal.title}</h3>
+                  <p className='text-[10px] text-amber-400/80 font-semibold'>Acceso temporalmente restringido</p>
+                </div>
+              </div>
+              <div className='text-xs text-slate-300 leading-relaxed whitespace-pre-line'>
+                {helpModal.content}
+              </div>
+              <div className='pt-2'>
+                <button
+                  onClick={() => setHelpModal(null)}
+                  className='w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-black uppercase tracking-wider transition-colors'
+                >
+                  Entendido
                 </button>
               </div>
             </motion.div>
@@ -3455,6 +3764,15 @@ function DiceFootballApp() {
           userTeamId: mine?.id || cl.userTeamId
         };
       }
+
+      // Europa League (Copa Pura con 16 de Liga + 8 Repescados de Champions)
+      const el = getAutoFillData('C3', next);
+      if (el) {
+        next['C3'] = {
+          ...next['C3'], ...el,
+          name: next['C3']?.name || 'Europa League'
+        };
+      }
       return next;
     });
     setCareer(c => (c.active ? { ...c, clSeason: seasonNow } : c));
@@ -3475,6 +3793,21 @@ function DiceFootballApp() {
         const clWinner = (cl.teams || []).find((t: any) => t.id === clWinnerId);
         if (clWinner) {
           archiveCompetition('C1', 1, clWinner, cl);
+        }
+      }
+    }
+
+    const elComp = comps['C3'];
+    if (elComp) {
+      const final = elComp.bracket?.Final?.[0] || elComp.bracket?.Final;
+      if (final && final.sh !== null && final.sh !== undefined) {
+        let elWinnerId = null;
+        if (final.sh > final.sa) elWinnerId = final.hId;
+        else if (final.sa > final.sh) elWinnerId = final.aId;
+        else elWinnerId = ((final.penH || 0) > (final.penA || 0)) ? final.hId : final.aId;
+        const elWinner = (elComp.teams || []).find((t: any) => t.id === elWinnerId);
+        if (elWinner) {
+          archiveCompetition('C3', 1, elWinner, elComp);
         }
       }
     }
@@ -3636,7 +3969,8 @@ function DiceFootballApp() {
 
     const currentSeasonNum = seasonState?.season || 1;
     const entry = { 
-      id: Date.now(), compId, name: comp.name, date: new Date().toLocaleDateString(), div, winner, 
+      id: `arch_${compId}_d${div}_s${currentSeasonNum}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      compId, name: comp.name, date: new Date().toLocaleDateString(), div, winner, 
       teams: t, history: isDiv2 ? comp.history2 : comp.history, bracket: comp.bracket, groups: comp.groups, type: comp.type,
       season: currentSeasonNum
     };
@@ -3720,7 +4054,7 @@ function DiceFootballApp() {
       }
     }
 
-    const isVuelta = activeCompId === 'C1' && activeComp.matchday % 2 !== 0 && activeComp.phase !== 'Final' && activeComp.phase !== 'groups';
+    const isVuelta = (activeCompId === 'C1' || activeCompId === 'C3') && activeComp.matchday % 2 !== 0 && activeComp.phase !== 'Final' && activeComp.phase !== 'groups';
     let aggregate = null;
     if (isVuelta && activeComp.bracket) {
       const matchArray = Array.isArray(activeComp.bracket[activeComp.phase]) ? activeComp.bracket[activeComp.phase] : [activeComp.bracket[activeComp.phase]];
@@ -3817,11 +4151,11 @@ function DiceFootballApp() {
     if (nextTurn === 'A' && nextOppA <= 0) nextTurn = 'H';
 
     if (nextOppH <= 0 && nextOppA <= 0) {
-      const isChampions = activeCompId === 'C1' || !!state.isChampions;
-      const comp = (activeCompId ? comps[activeCompId] : null) || (isChampions ? comps['C1'] : null);
+      const isTwoLegged = (activeCompId === 'C1' || activeCompId === 'C3') || !!state.isChampions;
+      const comp = (activeCompId ? comps[activeCompId] : null) || (isTwoLegged ? (comps[activeCompId || ''] || comps['C1']) : null);
       const phase = state.championsPhase || comp?.phase;
-      const isIda = isChampions && phase !== 'Final' && phase !== 'groups' && (state.isVuelta === false || (comp && (comp.matchday || 0) % 2 === 0));
-      const isVuelta = isChampions && phase !== 'Final' && phase !== 'groups' && (state.isVuelta === true || (comp && (comp.matchday || 0) % 2 !== 0));
+      const isIda = isTwoLegged && phase !== 'Final' && phase !== 'groups' && (state.isVuelta === false || (comp && (comp.matchday || 0) % 2 === 0));
+      const isVuelta = isTwoLegged && phase !== 'Final' && phase !== 'groups' && (state.isVuelta === true || (comp && (comp.matchday || 0) % 2 !== 0));
 
       let needsPenalties = false;
       if (state.isKnockout) {
@@ -3987,7 +4321,7 @@ function DiceFootballApp() {
   const handleArchiveAndResetCareer = () => {
     // Archivar carrera actual con fecha y datos del club
     const archiveEntry = {
-      id: 'arch_' + Date.now(),
+      id: 'arch_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
       date: new Date().toISOString(),
       archivedAt: new Date().toISOString(),
       manager: career.manager || 'Entrenador',
@@ -4565,7 +4899,7 @@ function DiceFootballApp() {
             };
             updatedAppHistory = [
               {
-                id: `app-res-${Date.now()}`,
+                id: `app-res-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
                 teamName: updatedActiveApp.teamName,
                 compName: updatedActiveApp.compName,
                 tier: updatedActiveApp.tier,
@@ -4591,7 +4925,7 @@ function DiceFootballApp() {
           } else {
             updatedAppHistory = [
               {
-                id: `app-res-${Date.now()}`,
+                id: `app-res-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
                 teamName: updatedActiveApp.teamName,
                 compName: updatedActiveApp.compName,
                 tier: updatedActiveApp.tier,
@@ -5697,7 +6031,33 @@ function DiceFootballApp() {
             return (m.penH || 0) > (m.penA || 0) ? m.hId : m.aId;
           });
 
-          if (phase === 'Octavos') {
+          if (phase === 'Dieciseisavos') {
+            if (targetId === 'C3' || newBracket.Playoffs) {
+              nextPhase = 'Playoffs';
+              newBracket.Playoffs = Array(8).fill(0).map((_, i) => ({
+                id: 'P' + (i + 1),
+                hId: winners[i] ?? comp.teams?.[i]?.id ?? (1 + i),
+                aId: winners[8 + i] ?? comp.teams?.[8 + i]?.id ?? (9 + i),
+                sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
+              }));
+            } else {
+              nextPhase = 'Octavos';
+              newBracket.Octavos = Array(8).fill(0).map((_, i) => ({
+                id: 'O' + (i + 1),
+                hId: newBracket.Octavos?.[i]?.hId ?? comp.teams?.[32 + i]?.id ?? (33 + i),
+                aId: winners[i] ?? comp.teams?.[i]?.id ?? 1,
+                sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
+              }));
+            }
+          } else if (phase === 'Playoffs') {
+            nextPhase = 'Octavos';
+            newBracket.Octavos = Array(8).fill(0).map((_, i) => ({
+              id: 'O' + (i + 1),
+              hId: newBracket.Octavos?.[i]?.hId ?? comp.teams?.[32 + i]?.id ?? (33 + i),
+              aId: winners[i] ?? comp.teams?.[i]?.id ?? 1,
+              sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
+            }));
+          } else if (phase === 'Octavos') {
             nextPhase = 'Cuartos';
             newBracket.Cuartos = Array(4).fill(0).map((_, i) => ({
               id: 'C' + (i + 1),
@@ -6175,7 +6535,7 @@ function DiceFootballApp() {
             };
             updatedAppHistory = [
               {
-                id: `app-res-${Date.now()}`,
+                id: `app-res-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
                 teamName: updatedActiveApp.teamName,
                 compName: updatedActiveApp.compName,
                 tier: updatedActiveApp.tier,
@@ -6201,7 +6561,7 @@ function DiceFootballApp() {
           } else {
             updatedAppHistory = [
               {
-                id: `app-res-${Date.now()}`,
+                id: `app-res-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
                 teamName: updatedActiveApp.teamName,
                 compName: updatedActiveApp.compName,
                 tier: updatedActiveApp.tier,
@@ -6386,6 +6746,43 @@ function DiceFootballApp() {
         const updatedComp = { teams: updatedTeams, history: [{ day: 'Jornada ' + nextMatchday, results }, ...currentComp.history], matchday: nextMatchday, phase: isEndOfGroups ? (newBracket.Octavos ? 'Octavos' : 'Cuartos') : 'groups', bracket: newBracket };
         updateCompById(cId, updatedComp);
 
+        // Sincronizar Europa League con repescados de Champions League
+        if (cId === 'C1' && isEndOfGroups) {
+          const championsThirds: any[] = (currentComp.groups || []).map((g: any) => {
+            const groupTeams = updatedTeams
+              .filter((t: any) => g.teamIds && g.teamIds.includes(t.id))
+              .sort((a: any, b: any) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
+            return groupTeams[2];
+          }).filter(Boolean);
+
+          const elComp = comps['C3'];
+          if (elComp) {
+            let elBracket = elComp.bracket ? JSON.parse(JSON.stringify(elComp.bracket)) : {};
+            let elTeams = elComp.teams ? [...elComp.teams] : [];
+            if (championsThirds.length === 8) {
+              const base32 = elTeams.slice(0, 32);
+              const mergedTeams = [...base32, ...championsThirds.map((t, idx) => ({ ...t, id: 33 + idx }))];
+              const octavosMatches = Array(8).fill(0).map((_, i) => ({
+                id: 'O' + (i + 1),
+                hId: 33 + i,
+                aId: elBracket.Octavos?.[i]?.aId ?? null,
+                sh: elBracket.Octavos?.[i]?.sh ?? null,
+                sa: elBracket.Octavos?.[i]?.sa ?? null,
+                penH: elBracket.Octavos?.[i]?.penH ?? null,
+                penA: elBracket.Octavos?.[i]?.penA ?? null,
+                sh2: elBracket.Octavos?.[i]?.sh2 ?? null,
+                sa2: elBracket.Octavos?.[i]?.sa2 ?? null
+              }));
+              elBracket.Octavos = octavosMatches;
+              updateCompById('C3', {
+                ...elComp,
+                teams: mergedTeams,
+                bracket: elBracket
+              });
+            }
+          }
+        }
+
         // Check if user's team was eliminated in group stage (solo en vista standalone de competición)
         if (isEndOfGroups && cId === activeCompId) {
           const userTeamId = currentComp.userTeamId;
@@ -6410,9 +6807,9 @@ function DiceFootballApp() {
 
     } else {
        // Eliminatorias
-       const isChampions = (cId === 'C1' || currentComp.id === 'C1' || currentComp.name?.includes('Champions')) && cId !== 'C2' && currentComp.id !== 'C2' && !currentComp.name?.includes('Mundial') && !currentComp.name?.includes('World');
+       const isTwoLegged = (cId === 'C1' || cId === 'C3' || currentComp.id === 'C1' || currentComp.id === 'C3' || currentComp.name?.includes('Champions') || currentComp.name?.includes('Europa')) && cId !== 'C2' && currentComp.id !== 'C2' && !currentComp.name?.includes('Mundial') && !currentComp.name?.includes('World');
        const phase = currentComp.phase;
-       const isVuelta = isChampions && currentComp.matchday % 2 !== 0 && phase !== 'Final';
+       const isVuelta = isTwoLegged && currentComp.matchday % 2 !== 0 && phase !== 'Final';
        const newBracket = { ...currentComp.bracket };
        const matchesToProcess = Array.isArray(newBracket[phase]) ? newBracket[phase] : [newBracket[phase]];
        const allResults = [];
@@ -6428,8 +6825,8 @@ function DiceFootballApp() {
              const a = currentComp.teams.find(t => t.id === (isVuelta ? m.hId : m.aId));
              const { sh: simH, sa: simA } = simMatchGoals(h?.opp, h?.att, a?.def, a?.opp, a?.att, h?.def);
              if (isVuelta) { sh = simA; sa = simH; } else { sh = simH; sa = simA; }
-             const isDraw = (isChampions && isVuelta && phase !== 'Final') ? (m.sh + sh === m.sa + sa) : (sh === sa);
-             if (isDraw && (!isChampions || isVuelta || phase === 'Final')) {
+             const isDraw = (isTwoLegged && isVuelta && phase !== 'Final') ? (m.sh + sh === m.sa + sa) : (sh === sa);
+             if (isDraw && (!isTwoLegged || isVuelta || phase === 'Final')) {
                 const penShootout = simPenaltyShootout(h?.att || 1, a?.def || 1, a?.att || 1, h?.def || 1);
                 penH = isVuelta ? penShootout.scoreA : penShootout.scoreH;
                 penA = isVuelta ? penShootout.scoreH : penShootout.scoreA;
@@ -6441,12 +6838,38 @@ function DiceFootballApp() {
        });
 
        let nextPhase = phase, showWinner = false;
-       if (!isChampions || isVuelta || phase === 'Final') {
+       if (!isTwoLegged || isVuelta || phase === 'Final') {
           const winners = matchesToProcess.map(m => {
-             const tH = isChampions && phase!=='Final' ? m.sh+m.sh2 : m.sh; const tA = isChampions && phase!=='Final' ? m.sa+m.sa2 : m.sa;
+             const tH = isTwoLegged && phase!=='Final' ? m.sh+m.sh2 : m.sh; const tA = isTwoLegged && phase!=='Final' ? m.sa+m.sa2 : m.sa;
              if(tH>tA) return m.hId; if(tA>tH) return m.aId; return m.penH>m.penA ? m.hId : m.aId;
           });
-          if (phase === 'Octavos') {
+          if (phase === 'Dieciseisavos') {
+            if (cId === 'C3' || currentComp.bracket?.Playoffs) {
+              nextPhase = 'Playoffs';
+              newBracket.Playoffs = Array(8).fill(0).map((_, i) => ({
+                id: 'P' + (i + 1),
+                hId: winners[i] ?? null,
+                aId: winners[8 + i] ?? null,
+                sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
+              }));
+            } else {
+              nextPhase = 'Octavos';
+              newBracket.Octavos = Array(8).fill(0).map((_, i) => ({
+                id: 'O' + (i + 1),
+                hId: newBracket.Octavos?.[i]?.hId ?? currentComp.teams?.[32 + i]?.id ?? (33 + i),
+                aId: winners[i] ?? null,
+                sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
+              }));
+            }
+          } else if (phase === 'Playoffs') {
+            nextPhase = 'Octavos';
+            newBracket.Octavos = Array(8).fill(0).map((_, i) => ({
+              id: 'O' + (i + 1),
+              hId: newBracket.Octavos?.[i]?.hId ?? currentComp.teams?.[32 + i]?.id ?? (33 + i),
+              aId: winners[i] ?? null,
+              sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
+            }));
+          } else if (phase === 'Octavos') {
             nextPhase = 'Cuartos';
             newBracket.Cuartos = Array(4).fill(0).map((_, i) => ({
               id: 'C' + (i + 1),
@@ -6495,9 +6918,19 @@ function DiceFootballApp() {
           ? 'Gran Final'
           : phase === 'TercerPuesto'
           ? 'Tercer Puesto'
-          : (phase + (isChampions ? (isVuelta ? ' (Vuelta)' : ' (Ida)') : ''));
+          : (phase + (isTwoLegged ? (isVuelta ? ' (Vuelta)' : ' (Ida)') : ''));
         const updatedComp = { history: [{ day: dayLabel, results: allResults }, ...currentComp.history], matchday: currentComp.matchday + 1, phase: nextPhase, bracket: newBracket, showWinner };
         updateCompById(cId, updatedComp);
+
+        // Sincronizar ronda equivalente de Europa League al procesar Champions League
+        if (cId === 'C1' && !targetCompId && !ms) {
+          const elComp = comps['C3'];
+          if (elComp && elComp.phase !== 'Terminado' && !elComp.showWinner) {
+            setTimeout(() => {
+              processCupRound(null, 'C3', true);
+            }, 50);
+          }
+        }
         if (showWinner) {
           const final = newBracket?.Final?.[0] || newBracket?.Final;
           let clWinner = null;
@@ -6509,11 +6942,14 @@ function DiceFootballApp() {
         }
 
         // Check if user's team was eliminated in knockout (solo en vista standalone)
-        if ((!isChampions || isVuelta || phase === 'Final') && cId === activeCompId) {
+        if ((!isTwoLegged || isVuelta || phase === 'Final') && cId === activeCompId) {
           const userTeamId = currentComp.userTeamId;
           const winners = matchesToProcess.map(m => {
-            const tH = isChampions && phase!=='Final' ? m.sh+m.sh2 : m.sh; const tA = isChampions && phase!=='Final' ? m.sa+m.sa2 : m.sa;
-            if(tH>tA) return m.hId; if(tA>tH) return m.aId; return m.penH>m.penA ? m.hId : m.aId;
+            const tH = isTwoLegged && phase !== 'Final' ? ((m.sh || 0) + (m.sh2 || 0)) : (m.sh || 0);
+            const tA = isTwoLegged && phase !== 'Final' ? ((m.sa || 0) + (m.sa2 || 0)) : (m.sa || 0);
+            if (tH > tA) return m.hId;
+            if (tA > tH) return m.aId;
+            return (m.penH || 0) > (m.penA || 0) ? m.hId : m.aId;
           });
           const wasInThisRound = matchesToProcess.some(m => m.hId === userTeamId || m.aId === userTeamId);
           const userAdvanced = winners.includes(userTeamId);
@@ -6689,6 +7125,17 @@ function DiceFootballApp() {
         userTeamId: clData.teams?.[0]?.id || 1,
         championsHistory: prevHistory
       });
+    } else if (targetCompId === 'C3') {
+      const elData = getAutoFillData('C3', comps);
+      updateCompById('C3', {
+        ...elData,
+        matchday: 0,
+        history: [],
+        phase: 'Dieciseisavos',
+        showWinner: false,
+        userTeamId: elData.teams?.[0]?.id || 1,
+        championsHistory: prevHistory
+      });
     } else {
       updateCompById(targetCompId, {
         teams: defaultData.teams || [],
@@ -6791,7 +7238,7 @@ function DiceFootballApp() {
         }
       } else if (activeComp.bracket) {
         const matchArray = Array.isArray(activeComp.bracket[activeComp.phase]) ? activeComp.bracket[activeComp.phase] : [activeComp.bracket[activeComp.phase]];
-        const isVuelta = activeCompId === 'C1' && activeComp.matchday % 2 !== 0 && activeComp.phase !== 'Final';
+        const isVuelta = (activeCompId === 'C1' || activeCompId === 'C3') && activeComp.matchday % 2 !== 0 && activeComp.phase !== 'Final';
         const userMatch = matchArray.find(m => m && (m.hId === userTeam.id || m.aId === userTeam.id));
         if (userMatch) return (isVuelta && userMatch.sh2 === null) || (!isVuelta && userMatch.sh === null) ? userMatch : null;
         return matchArray.find(m => m && (isVuelta ? m.sh2 === null : m.sh === null));
@@ -6803,7 +7250,7 @@ function DiceFootballApp() {
     let homeId = currentMatch?.homeId || currentMatch?.hId;
     let awayId = currentMatch?.awayId || currentMatch?.aId;
 
-    if (activeCompId === 'C1' && activeComp.matchday % 2 !== 0 && activeComp.phase !== 'Final' && activeComp.phase !== 'groups' && currentMatch?.hId) {
+    if ((activeCompId === 'C1' || activeCompId === 'C3') && activeComp.matchday % 2 !== 0 && activeComp.phase !== 'Final' && activeComp.phase !== 'groups' && currentMatch?.hId) {
       const temp = homeId; homeId = awayId; awayId = temp;
     }
 
@@ -6882,7 +7329,7 @@ function DiceFootballApp() {
                       } else if (bracket) {
                         // After group stage: get all teams still in bracket (any phase)
                         const allIds = new Set<number>();
-                        ['Octavos', 'Cuartos', 'Semis', 'Final'].forEach(p => {
+                        ['Dieciseisavos', 'Playoffs', 'Octavos', 'Cuartos', 'Semis', 'Final'].forEach(p => {
                           const matches = bracket[p];
                           if (matches) {
                             const arr = Array.isArray(matches) ? matches : [matches];
@@ -7335,13 +7782,14 @@ function DiceFootballApp() {
                   <div>
                     <h3 className='text-sm font-black uppercase text-slate-200 mb-4 text-center'>Eliminatorias</h3>
                     <div className='flex gap-4 overflow-x-auto custom-scrollbar pb-4'>
-                      {['Octavos', 'Cuartos', 'Semis', 'Final'].filter(p => activeComp.bracket[p]).map(phase => {
-                        const isChampions = activeCompId === 'C1';
+                      {['Dieciseisavos', 'Playoffs', 'Octavos', 'Cuartos', 'Semis', 'Final'].filter(p => activeComp.bracket[p]).map(phase => {
+                        const isChampions = activeCompId === 'C1' || activeCompId === 'C3';
                         const isTwoLegged = isChampions && phase !== 'Final';
+                        const phaseTitle = phase === 'Dieciseisavos' ? '1/16 Final - R1' : phase === 'Playoffs' ? '1/16 Final - R2' : phase;
                         return (
                           <div key={phase} className='min-w-[260px] sm:min-w-[290px] flex-shrink-0 space-y-2.5'>
                             <div className='flex items-center justify-between bg-slate-900/60 px-3 py-1.5 rounded-xl border border-white/10'>
-                              <h4 className='text-[10px] font-black uppercase text-blue-300'>{phase}</h4>
+                              <h4 className='text-[10px] font-black uppercase text-blue-300'>{phaseTitle}</h4>
                               {isTwoLegged ? (
                                 <div className='flex items-center gap-2 text-[7px] font-black uppercase tracking-wider text-slate-400'>
                                   <span className='w-5 text-center'>Ida</span>
@@ -7681,14 +8129,20 @@ function DiceFootballApp() {
             </div>
 
             <div className='space-y-1.5'>
-              {sortedTeams.slice(0, 6).map((t, i) => (
-                <div key={t.id} className={'flex items-center gap-3 p-2 rounded-xl ' + (t.id === activeComp.userTeamId ? 'bg-blue-600/40 border border-blue-400/50 shadow-inner' : (isDiv2 && i < 3 ? 'bg-emerald-900/30 border border-emerald-500/20' : 'bg-black/30'))}>
-                  <span className={'text-[10px] font-black italic w-4 ' + (isDiv2 && i < 3 ? 'text-emerald-400' : 'text-slate-300')}>{i+1}</span>
-                  <Shield color1={t?.color1} color2={t?.color2} initial={t?.name} size='sm' isFlag={t?.isFlag} />
-                  <span className='text-[11px] font-bold uppercase truncate flex-grow italic text-white drop-shadow-sm'>{t?.name}</span>
-                  <span className='text-[10px] font-black bg-slate-800/60 px-2 py-0.5 rounded-md text-emerald-400 border border-white/10'>{t.pts} PTS</span>
-                </div>
-              ))}
+              {sortedTeams.slice(0, 8).map((t, i) => {
+                const isChamps = !isDiv2 && i < 4;
+                const isEL = !isDiv2 && i >= 4 && i < 8;
+                const isPromo = isDiv2 && i < 3;
+                const isUser = t.id === activeComp.userTeamId;
+                return (
+                  <div key={t.id} className={'flex items-center gap-3 p-2 rounded-xl ' + (isUser ? 'bg-blue-600/40 border border-blue-400/50 shadow-inner' : (isPromo ? 'bg-emerald-900/30 border border-emerald-500/20' : (isChamps ? 'bg-blue-950/30 border border-blue-500/20' : (isEL ? 'bg-amber-950/30 border border-amber-500/20' : 'bg-black/30'))))}>
+                    <span className={'text-[10px] font-black italic w-4 ' + (isPromo ? 'text-emerald-400' : isChamps ? 'text-blue-400' : isEL ? 'text-amber-400' : 'text-slate-300')}>{i+1}</span>
+                    <Shield color1={t?.color1} color2={t?.color2} initial={t?.name} size='sm' isFlag={t?.isFlag} />
+                    <span className='text-[11px] font-bold uppercase truncate flex-grow italic text-white drop-shadow-sm'>{t?.name}</span>
+                    <span className='text-[10px] font-black bg-slate-800/60 px-2 py-0.5 rounded-md text-emerald-400 border border-white/10'>{t.pts} PTS</span>
+                  </div>
+                );
+              })}
             </div>
           </section>
         )}
@@ -7790,7 +8244,7 @@ function DiceFootballApp() {
               return (
                 <div className='space-y-2'>
                 <button onClick={() => startMatch(homeId, awayId, isDiv2)} className='w-full bg-slate-800/90 hover:bg-slate-700/90 text-white py-4 rounded-2xl text-xs font-black uppercase italic tracking-widest border border-white/20 active:scale-95 transition-colors flex flex-col items-center justify-center'>
-                  <span>{activeComp.phase === 'Final' ? 'Gran Final' : activeComp.phase === 'TercerPuesto' ? 'Partido por 3º Puesto' : ('Jugar ' + (isLeague || activeComp.phase === 'groups' ? 'Jornada ' + (currentMatchday + 1) : activeComp.phase + (activeCompId === 'C1' ? (activeComp.matchday % 2 === 0 ? ' (Ida)' : ' (Vuelta)') : '')))}</span>
+                  <span>{activeComp.phase === 'Final' ? 'Gran Final' : activeComp.phase === 'TercerPuesto' ? 'Partido por 3º Puesto' : ('Jugar ' + (isLeague || activeComp.phase === 'groups' ? 'Jornada ' + (currentMatchday + 1) : (activeComp.phase === 'Dieciseisavos' ? '1/16 Final - R1' : activeComp.phase === 'Playoffs' ? '1/16 Final - R2' : activeComp.phase) + ((activeCompId === 'C1' || activeCompId === 'C3') ? (activeComp.matchday % 2 === 0 ? ' (Ida)' : ' (Vuelta)') : '')))}</span>
                   <span className='text-[7px] opacity-60 mt-0.5 tracking-normal text-slate-300'>{homeTeam?.opp} vs {awayTeam?.opp} TIROS DISPONIBLES</span>
 
                 </button>
@@ -7869,16 +8323,18 @@ function DiceFootballApp() {
                   const isUser = standingsView !== 'previous' && t.id === activeComp.userTeamId;
                   const isPromo = standingsView !== 'previous' && isDiv2 && i < 3;
                   const isChampions = standingsView !== 'previous' && !isDiv2 && i < 4;
+                  const isEuropaLeague = standingsView !== 'previous' && !isDiv2 && i >= 4 && i < 8;
                   const isRelegation = standingsView !== 'previous' && !isDiv2 && i >= rows.length - 3;
-                  const rowBg = isUser ? 'bg-blue-600/30' : (isPromo ? 'bg-emerald-950/20' : (isChampions ? 'bg-blue-950/25' : (isRelegation ? 'bg-red-950/20' : '')));
+                  const rowBg = isUser ? 'bg-blue-600/30' : (isPromo ? 'bg-emerald-950/20' : (isChampions ? 'bg-blue-950/25' : (isEuropaLeague ? 'bg-amber-950/20' : (isRelegation ? 'bg-red-950/20' : ''))));
 
                   return (
                     <tr key={t.id} className={rowBg}>
-                      <td className={'p-3 text-[10px] font-black italic sticky z-40 bg-[#0f172a] ' + (isPromo ? 'text-emerald-400' : isChampions ? 'text-blue-400' : isRelegation ? 'text-red-400' : 'text-slate-300')} style={{ left: 0 }}>
+                      <td className={'p-3 text-[10px] font-black italic sticky z-40 bg-[#0f172a] ' + (isPromo ? 'text-emerald-400' : isChampions ? 'text-blue-400' : isEuropaLeague ? 'text-amber-400' : isRelegation ? 'text-red-400' : 'text-slate-300')} style={{ left: 0 }}>
                         <span className='inline-flex items-center gap-1'>
                           {i + 1}
-                          {isChampions && <span className='w-1.5 h-1.5 rounded-full bg-blue-400 shadow-[0_0_6px_rgba(96,165,250,0.8)]' title='Puesto UEFA Champions League'></span>}
-                          {isPromo && <span className='w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]' title='Ascenso directo'></span>}
+                          {isChampions && <span className='w-1.5 h-1.5 rounded-full bg-blue-400 shadow-[0_0_6px_rgba(96,165,250,0.8)]' title='Puesto UEFA Champions League (1º al 4º)'></span>}
+                          {isEuropaLeague && <span className='w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]' title='Puesto UEFA Europa League (5º al 8º)'></span>}
+                          {isPromo && <span className='w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]' title='Ascenso directo a 1ª División'></span>}
                         </span>
                       </td>
                       <td className='p-3 flex items-center gap-2 sticky z-40 bg-[#0f172a]' style={{ left: '40px', minWidth: '130px' }}><Shield color1={t?.color1} color2={t?.color2} initial={t?.name} size='xs' isFlag={t?.isFlag} /><span className='text-[10px] font-bold uppercase truncate italic max-w-[80px]'>{t?.name}</span></td>
@@ -7898,6 +8354,10 @@ function DiceFootballApp() {
                   <div className='flex items-center gap-1.5'>
                     <span className='w-2 h-2 rounded-full bg-blue-400 shadow-[0_0_6px_rgba(96,165,250,0.8)]'></span>
                     <span>1º al 4º: UEFA Champions League (Fase de Grupos)</span>
+                  </div>
+                  <div className='flex items-center gap-1.5'>
+                    <span className='w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]'></span>
+                    <span>5º al 8º: UEFA Europa League (Eliminatoria Directa)</span>
                   </div>
                   <div className='flex items-center gap-1.5'>
                     <span className='w-2 h-2 rounded-full bg-rose-500'></span>
@@ -8082,7 +8542,8 @@ function DiceFootballApp() {
                 <div className='space-y-6'>
                   <h2 className='text-xs font-black uppercase text-slate-200 border-b border-white/20 pb-2 drop-shadow-md'>Eliminatorias</h2>
                   {(() => {
-                    const po = ['Octavos', 'Cuartos', 'Semis', 'Final'];
+                    const allKnockoutPhases = ['Dieciseisavos', 'Playoffs', 'Octavos', 'Cuartos', 'Semis', 'Final'];
+                    const po = allKnockoutPhases.filter(p => activeComp.bracket[p]);
                     const curIdx = po.indexOf(activeComp.phase);
                     if (curIdx === -1) return po; 
                     return [...po.slice(curIdx, curIdx + 1), ...po.slice(curIdx + 1), ...po.slice(0, curIdx).reverse()];
@@ -8090,23 +8551,23 @@ function DiceFootballApp() {
                     const matches = activeComp.bracket[phase];
                     if (!matches || (Array.isArray(matches) && matches.length === 0)) return null;
                     const matchArray = Array.isArray(matches) ? matches : [matches];
-                    const phases = ['groups', 'Octavos', 'Cuartos', 'Semis', 'Final'];
+                    const phases = ['groups', 'Dieciseisavos', 'Playoffs', 'Octavos', 'Cuartos', 'Semis', 'Final'];
                     const currentPhaseIdx = phases.indexOf(activeComp.phase);
                     const phaseIdx = phases.indexOf(phase);
                     let status = phaseIdx < currentPhaseIdx ? 'Finalizado' : phaseIdx === currentPhaseIdx ? 'En Curso' : 'Próximo';
+                    const phaseLabel = phase === 'Dieciseisavos' ? '1/16 Final - R1' : phase === 'Playoffs' ? '1/16 Final - R2' : phase;
 
                     return (
                       <div key={phase} className={'bg-slate-900/30 backdrop-blur-md rounded-3xl p-4 border border-white/10 shadow-lg ' + (status === 'En Curso' ? 'ring-2 ring-blue-500/50' : 'opacity-80')}>
                         <div className='flex justify-between items-center mb-3'>
-                          <h3 className='text-[9px] font-black uppercase text-slate-300'>{phase}</h3>
+                          <h3 className='text-[9px] font-black uppercase text-slate-300'>{phaseLabel}</h3>
                           <span className={'text-[7px] font-black uppercase px-2 py-0.5 rounded-full ' + (status === 'Finalizado' ? 'bg-emerald-500/30 text-emerald-300' : status === 'En Curso' ? 'bg-blue-500/40 text-blue-200' : 'bg-slate-800/80 text-slate-300')}>{status}</span>
                         </div>
                         <div className='space-y-2'>
                           {matchArray.map((m, mi) => {
                             if (!m) return null;
                             const home = activeComp.teams.find(t => t.id === m.hId); const away = activeComp.teams.find(t => t.id === m.aId);
-                            const isChampions = activeCompId === 'C1';
-                            const isTwoLegged = isChampions && phase !== 'Final';
+                            const isTwoLegged = (activeCompId === 'C1' || activeCompId === 'C3') && phase !== 'Final';
                             const isPlayedIda = m.sh !== null && m.sh !== undefined;
                             const isPlayedVuelta = isTwoLegged && m.sh2 !== null && m.sh2 !== undefined;
                             const totH = (m.sh || 0) + (m.sh2 || 0);
@@ -8197,9 +8658,8 @@ function DiceFootballApp() {
           <div className='text-center py-20 text-slate-300 font-black bg-slate-900/30 backdrop-blur-md rounded-[2rem] border border-white/10 uppercase italic text-[10px] shadow-lg'>Las eliminatorias se generarán al finalizar la fase de grupos.</div>
         ) : (
           <div className='flex gap-4 overflow-x-auto custom-scrollbar pb-8'>
-            {['Octavos', 'Cuartos', 'Semis', 'TercerPuesto', 'Final'].filter(p => activeComp.bracket[p]).map(phase => {
-              const isChampions = activeCompId === 'C1';
-              const isTwoLegged = isChampions && phase !== 'Final' && phase !== 'TercerPuesto';
+            {['Dieciseisavos', 'Octavos', 'Cuartos', 'Semis', 'TercerPuesto', 'Final'].filter(p => activeComp.bracket[p]).map(phase => {
+              const isTwoLegged = (activeCompId === 'C1' || activeCompId === 'C3') && phase !== 'Final' && phase !== 'TercerPuesto';
               return (
                 <div key={phase} className='min-w-[260px] sm:min-w-[290px] flex-shrink-0 space-y-2.5'>
                   <div className='flex items-center justify-between bg-slate-900/60 px-3 py-2 rounded-xl border border-white/10'>
@@ -8324,7 +8784,7 @@ function DiceFootballApp() {
           <div className='flex flex-col items-center gap-1'>
             <div className='px-4 py-1 bg-red-900/60 backdrop-blur-md rounded-full text-[9px] font-black uppercase italic border border-red-500/20 text-red-200 shadow-sm'>En Vivo</div>
             <span className='text-[8px] font-black uppercase italic text-slate-300 tracking-wider'>
-              {activeComp.phase === 'Final' ? '🏆 Gran Final' : activeComp.phase === 'TercerPuesto' ? '🥉 3º Puesto' : isLeague || activeComp.phase === 'groups' ? `📅 Jornada ${currentMatchday + 1}` : `⚔️ ${activeComp.phase}${activeCompId === 'C1' ? (activeComp.matchday % 2 === 0 ? ' — Ida' : ' — Vuelta') : ''}`}
+              {activeComp.phase === 'Final' ? '🏆 Gran Final' : activeComp.phase === 'TercerPuesto' ? '🥉 3º Puesto' : isLeague || activeComp.phase === 'groups' ? `📅 Jornada ${currentMatchday + 1}` : `⚔️ ${activeComp.phase === 'Dieciseisavos' ? '1/16 Final - R1' : activeComp.phase === 'Playoffs' ? '1/16 Final - R2' : activeComp.phase}${(activeCompId === 'C1' || activeCompId === 'C3') ? (activeComp.matchday % 2 === 0 ? ' — Ida' : ' — Vuelta') : ''}`}
             </span>
           </div>
           <div className='w-10'></div>
