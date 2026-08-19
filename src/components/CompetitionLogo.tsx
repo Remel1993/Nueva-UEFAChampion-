@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-export type CompetitionId = 'L1' | 'L2' | 'L3' | 'L4' | 'L5' | 'L6' | 'L7' | 'L8' | 'C1' | 'C2' | string;
+export type CompetitionId = 'L1' | 'L2' | 'L3' | 'L4' | 'L5' | 'L6' | 'L7' | 'L8' | 'C1' | 'C2' | 'C3' | string;
 
 interface CompetitionLogoProps {
   compId: CompetitionId;
@@ -22,6 +22,7 @@ const LOGO_PATHS: Record<string, string[]> = {
   'L8': ['/logos/uefa.png', '/logos/uefa.svg', '/logos/uefa.webp', '/logos/uefa.jpg', '/logos/L8.png', '/logos/miscelanea_b.png'],
   'C1': ['/logos/champions.png', '/logos/champions.svg', '/logos/champions.webp', '/logos/champions.jpg', '/logos/C1.png', '/logos/champions_league.png', '/logos/ucl.png'],
   'C2': ['/logos/fifa.png', '/logos/fifa.svg', '/logos/fifa.webp', '/logos/fifa.jpg', '/logos/C2.png', '/logos/worldcup.png', '/logos/copa_del_mundo.png', '/logos/mundial.png'],
+  'C3': ['/logos/europa_league.png', '/logos/europaleague.png', '/logos/europa.png', '/logos/uel.png', '/logos/C3.png'],
 };
 
 // ==========================================
@@ -134,6 +135,22 @@ export const ChampionsLeagueLogo: React.FC<{ size?: number; className?: string }
   </svg>
 );
 
+export const EuropaLeagueLogo: React.FC<{ size?: number; className?: string }> = ({ size = 32, className = '' }) => (
+  <svg viewBox="0 0 512 512" width={size} height={size} className={`inline-block shrink-0 ${className}`} fill="none" xmlns="http://www.w3.org/2000/svg">
+    <g fill="#F37021">
+      {/* Silueta de la copa UEFA Europa League */}
+      <path d="M210 100 L302 100 L320 230 C320 280 290 320 256 340 C222 320 192 280 192 230 Z" fill="#F37021" />
+      <path d="M236 340 L276 340 L286 420 L226 420 Z" fill="#EA580C" />
+      <rect x="206" y="420" width="100" height="24" rx="6" fill="#1E293B" />
+      <path d="M165 130 C150 170 155 220 185 250 L175 265 C140 230 135 170 150 120 Z" fill="#FFA300" />
+      <path d="M347 130 C362 170 357 220 327 250 L337 265 C372 230 377 170 362 120 Z" fill="#FFA300" />
+      <polygon points="256,50 266,75 292,75 271,90 279,115 256,100 233,115 241,90 220,75 246,75" fill="#FFA300" />
+    </g>
+    <text x="256" y="475" textAnchor="middle" fill="#EA580C" fontWeight="900" fontFamily="system-ui, -apple-system, sans-serif" fontSize="30" letterSpacing="3">EUROPA</text>
+    <text x="256" y="502" textAnchor="middle" fill="#1E293B" fontWeight="900" fontFamily="system-ui, -apple-system, sans-serif" fontSize="22" letterSpacing="4">LEAGUE</text>
+  </svg>
+);
+
 export const FifaLogo: React.FC<{ size?: number; className?: string }> = ({ size = 32, className = '' }) => (
   <svg viewBox="0 0 512 256" width={size} height={size ? size * 0.5 : 16} className={`inline-block shrink-0 ${className}`} fill="none" xmlns="http://www.w3.org/2000/svg">
     <g fill="#003B94">
@@ -158,6 +175,7 @@ const FallbackLogo: React.FC<{ compId: CompetitionId; size?: number }> = ({ comp
     case 'L8': return <UefaLogo size={size} />;
     case 'C1': return <ChampionsLeagueLogo size={size} />;
     case 'C2': return <FifaLogo size={size} />;
+    case 'C3': return <EuropaLeagueLogo size={size} />;
     default:   return <UefaLogo size={size} />;
   }
 };

@@ -176,7 +176,7 @@ export const TopWinnersTable = ({
       <div className="divide-y divide-white/5">
         {rows.map((r, i) => (
           <div
-            key={r.teamName}
+            key={r.teamName ? `${r.teamName}-${i}` : `winner-${i}`}
             className="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5"
           >
             <span className="w-4 text-[10px] font-black italic text-slate-400">

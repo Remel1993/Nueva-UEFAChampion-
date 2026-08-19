@@ -2862,9 +2862,9 @@ export const CareerView = ({
                     <Mail size={13} /> Resoluciones de Candidatura
                   </p>
                   <div className='space-y-2.5'>
-                    {career.applicationHistory.map(res => (
+                    {career.applicationHistory.map((res, idx) => (
                       <div
-                        key={res.id}
+                        key={res.id ? `app-res-${res.id}-${idx}` : `app-res-${idx}`}
                         className={`rounded-2xl p-3.5 border space-y-1.5 ${
                           res.accepted
                             ? 'bg-emerald-950/30 border-emerald-500/30'
