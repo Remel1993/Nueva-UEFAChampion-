@@ -246,58 +246,89 @@ const computeLeagueNewSeason = (comp: any) => {
   };
 };
 
-// MODIFICADO: CL se construye con jerarquía de fuentes:
-// 1) clasificación real final de la liga terminada
-// 2) previousStandings (última tabla final guardada)
-// 3) respaldo simulado/provisional (sistema anterior)
-// 4) sorteo de respaldo para completar 32
-const buildCLPool = (compsState, forceNames = []) => {
-  const getSource = (compKey) => {
+// MODIFICADO: CL se construye con 32 plazas directas fijas según la tabla de liga:
+// - España (L1): Top 4 (1º, 2º, 3º, 4º)
+// - Inglaterra (L3): Top 4 (1º, 2º, 3º, 4º)
+// - Italia (L2): Top 4 (1º, 2º, 3º, 4º)
+// - Alemania (L4): Top 4 (1º, 2º, 3º, 4º)
+// - Francia (L6): Top 4 (1º, 2º, 3º, 4º)
+// - Países Bajos (L5): Top 4 (1º, 2º, 3º, 4º)
+// - Miscelánea (L7): Top 8 (1º al 8º)
+// Total = 4 + 4 + 4 + 4 + 4 + 4 + 8 = exactamente 32 plazas directas
+const buildCLPool = (compsState: any, forceNames: string[] = []) => {
+  const leagueCodeMap: Record<string, string> = { L1: 'ES', L2: 'IT', L3: 'EN', L4: 'DE', L5: 'NL', L6: 'FR', L7: 'MI' };
+
+  const getSource = (compKey: string) => {
     const comp = compsState?.[compKey];
     if (!comp || !Array.isArray(comp.teams) || comp.teams.length === 0) return null;
     // PRIORIDAD 1: clasificación real de la competición terminada
     if (isLeagueFinished(comp)) {
       return { origin: 'real', table: buildStandingsSnapshot(comp.teams), teams: comp.teams };
     }
-    // PRIORIDAD 2: previousStandings
+    // PRIORIDAD 2: previousStandings guardada de temporada anterior
     if (Array.isArray(comp.previousStandings) && comp.previousStandings.length > 0) {
       return { origin: 'previous', table: comp.previousStandings, teams: comp.teams };
     }
-    // PRIORIDAD 3: respaldo provisional (por fuerza deportiva + azar)
-    const sim = [...comp.teams].sort((a, b) => (b.att + b.opp + b.def) - (a.att + a.opp + a.def));
+    // PRIORIDAD 3: si aún no se han jugado ligas, tomar la clasificación por defecto/histórica de 1ª División por coeficiente deportivo
+    const sim = [...comp.teams].sort((a, b) => {
+      const pA = (a.att || 1) + (a.opp || 1) + (a.def || 1);
+      const pB = (b.att || 1) + (b.opp || 1) + (b.def || 1);
+      return pB - pA;
+    });
     return { origin: 'sim', table: buildStandingsSnapshot(sim.map((t, i) => ({ ...t, pts: 1000 - i }))), teams: comp.teams };
   };
 
-  const pull = (compKey, guaranteed, extra) => {
+  const pull = (compKey: string, count: number) => {
     const src = getSource(compKey);
     if (!src) return [];
-    // Resolvemos cada fila de la tabla contra el equipo vivo actual (por id, si no por nombre)
-    const resolve = (row) => {
-      const live = src.teams.find(t => t.id === row.id) || src.teams.find(t => t.name === row.name);
+    const defLeague = leagueCodeMap[compKey] || 'EU';
+    // Resolvemos cada fila de la tabla contra el equipo vivo actual
+    const resolve = (row: any) => {
+      const live = src.teams.find((t: any) => t.id === row.id) || src.teams.find((t: any) => t.name === row.name);
       const base = live || row;
-      return { ...base, clOrigin: src.origin, clProvisional: src.origin === 'sim' };
+      return {
+        ...base,
+        league: base.league || defLeague,
+        clOrigin: src.origin,
+        clProvisional: src.origin === 'sim'
+      };
     };
     const ordered = src.table.map(resolve);
-    const top = ordered.slice(0, guaranteed);
-    const rest = [...ordered.slice(guaranteed, guaranteed + 6)].sort(() => Math.random() - 0.5).slice(0, extra);
-    return [...top, ...rest];
+    return ordered.slice(0, count);
   };
 
+  // 32 cupos directos estrictos: 6 ligas x 4 puestos + Miscelánea x 8 puestos
   let pool = [
-    ...pull('L1', 3, 2), ...pull('L3', 3, 2), ...pull('L4', 3, 2), ...pull('L2', 3, 2),
-    ...pull('L6', 3, 1), ...pull('L5', 3, 1), ...pull('L7', 3, 1),
+    ...pull('L1', 4), // 🇪🇸 España: 1º al 4º
+    ...pull('L3', 4), // 🏴󠁧󠁢󠁥󠁮󠁧󠁿 Inglaterra: 1º al 4º
+    ...pull('L2', 4), // 🇮🇹 Italia: 1º al 4º
+    ...pull('L4', 4), // 🇩🇪 Alemania: 1º al 4º
+    ...pull('L6', 4), // 🇫🇷 Francia: 1º al 4º
+    ...pull('L5', 4), // 🇳🇱 Países Bajos: 1º al 4º
+    ...pull('L7', 8), // 🌍 Miscelánea: 1º al 8º
   ];
 
   // Sin duplicados por nombre
   const seen = new Set();
   pool = pool.filter(t => { if (!t || seen.has(t.name)) return false; seen.add(t.name); return true; });
 
-  // PRIORIDAD 4: sorteo de respaldo hasta completar exactamente 32
+  // Respaldo de seguridad solo si alguna liga no tuviera equipos configurados
   if (pool.length < 32) {
-    const eligible = [];
+    const eligible: any[] = [];
     ['L1','L3','L4','L2','L6','L5','L7'].forEach(k => {
       const comp = compsState?.[k];
-      if (comp && Array.isArray(comp.teams)) comp.teams.forEach(t => { if (!seen.has(t.name)) eligible.push({ ...t, clOrigin: 'draw', clProvisional: true }); });
+      if (comp && Array.isArray(comp.teams)) {
+        comp.teams.forEach((t: any) => {
+          if (!seen.has(t.name)) {
+            eligible.push({
+              ...t,
+              league: t.league || leagueCodeMap[k] || 'EU',
+              clOrigin: 'draw',
+              clProvisional: true
+            });
+          }
+        });
+      }
     });
     eligible.sort(() => Math.random() - 0.5);
     while (pool.length < 32 && eligible.length > 0) {
@@ -308,16 +339,22 @@ const buildCLPool = (compsState, forceNames = []) => {
 
   pool = pool.slice(0, 32);
 
-  // PRIORIDAD 5: plazas garantizadas (p.ej. el club del modo carrera que se ha
-  // clasificado). Si no entró en el sorteo, ocupa el sitio del más débil.
-  (forceNames || []).forEach(name => {
+  // Plazas garantizadas del modo carrera si clasificó en puestos de Champions
+  (forceNames || []).forEach((name: string) => {
     if (!name || pool.some(t => t.name === name)) return;
-    let forced = null;
+    let forced: any = null;
     ['L1','L2','L3','L4','L5','L6','L7'].forEach(k => {
       const comp = compsState?.[k];
       if (!forced && comp && Array.isArray(comp.teams)) {
-        const found = comp.teams.find(t => t.name === name);
-        if (found) forced = { ...found, clOrigin: 'career', clProvisional: false };
+        const found = comp.teams.find((t: any) => t.name === name);
+        if (found) {
+          forced = {
+            ...found,
+            league: found.league || leagueCodeMap[k] || 'EU',
+            clOrigin: 'career',
+            clProvisional: false
+          };
+        }
       }
     });
     if (!forced) return;
@@ -330,75 +367,165 @@ const buildCLPool = (compsState, forceNames = []) => {
 };
 
 
-const drawKnockoutGroups = (pool, isWC, randomize) => {
-  let groups = Array.from({length: 8}, () => []);
-  const sortedPool = [...pool].sort((a, b) => (b.att + b.opp + b.def) - (a.att + a.opp + a.def));
-  let pots = [sortedPool.slice(0, 8), sortedPool.slice(8, 16), sortedPool.slice(16, 24), sortedPool.slice(24, 32)];
+const drawKnockoutGroups = (pool: any[], isWC?: boolean, randomize: boolean = true) => {
+  const leagueCodeMap: Record<string, string> = { L1: 'ES', L2: 'IT', L3: 'EN', L4: 'DE', L5: 'NL', L6: 'FR', L7: 'MI' };
 
-  if (randomize) pots = pots.map(pot => [...pot].sort(() => Math.random() - 0.5));
+  // Normalizar y resetear estadísticas para la nueva fase de grupos
+  const normalizedPool = pool.map((t) => ({
+    ...t,
+    league: t.league || leagueCodeMap[t.compId] || 'EU',
+    p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0
+  }));
+
+  // Ordenar los 32 equipos por potencia deportiva (ATT + OPP + DEF) de mayor a menor
+  // para construir 4 bombos canónicos de 8 equipos:
+  // Bombo 1 (Índices 0-7): Cabezas de serie / Campeones / Más fuertes
+  // Bombo 2 (Índices 8-15): Equipos fuertes / Subcampeones
+  // Bombo 3 (Índices 16-23): Equipos de nivel medio
+  // Bombo 4 (Índices 24-31): Equipos más débiles / sorpresas
+  const sortedPool = [...normalizedPool].sort((a, b) => {
+    const powerA = (a.att || 1) + (a.opp || 1) + (a.def || 1);
+    const powerB = (b.att || 1) + (b.opp || 1) + (b.def || 1);
+    if (powerB !== powerA) return powerB - powerA;
+    return (b.pts || 0) - (a.pts || 0);
+  });
+
+  const basePots = [
+    sortedPool.slice(0, 8),
+    sortedPool.slice(8, 16),
+    sortedPool.slice(16, 24),
+    sortedPool.slice(24, 32)
+  ];
+
+  let finalGroups: any[][] | null = null;
 
   if (isWC) {
-     let steps = 0;
-     const solve = (potIdx, groupIdx) => {
-        if (++steps > 2500) return false;
+    // Sorteo de Copa del Mundo con bombos de nivel y restricción de confederación
+    // (máx 2 de Europa, máx 1 de cualquier otra confederación)
+    for (let attempt = 0; attempt < 250; attempt++) {
+      const pots = basePots.map(pot => [...pot].sort(() => Math.random() - 0.5));
+      const groups: any[][] = Array.from({ length: 8 }, () => []);
+
+      let steps = 0;
+      const solveWC = (potIdx: number, teamIdx: number): boolean => {
+        if (++steps > 3500) return false;
         if (potIdx === 4) return true;
-        if (groupIdx === 8) return solve(potIdx + 1, 0);
+        if (teamIdx === 8) return solveWC(potIdx + 1, 0);
 
-        for (let i = 0; i < pots[potIdx].length; i++) {
-           const team = pots[potIdx][i];
-           if (team.used) continue;
+        const team = pots[potIdx][teamIdx];
+        const validGroupIndices = [0, 1, 2, 3, 4, 5, 6, 7]
+          .filter(gIdx => groups[gIdx].length === potIdx)
+          .filter(gIdx => {
+            const regCount = groups[gIdx].filter(t => t.region === team.region).length;
+            if (team.region === 'EU' && regCount >= 2) return false;
+            if (team.region !== 'EU' && regCount >= 1) return false;
+            return true;
+          })
+          .sort(() => Math.random() - 0.5);
 
-           const regionCount = groups[groupIdx].filter(t => t.region === team.region).length;
-           let conflict = false;
-           if (team.region === 'EU' && regionCount >= 2) conflict = true;
-           if (team.region !== 'EU' && regionCount >= 1) conflict = true;
-
-           if (!conflict) {
-              team.used = true;
-              groups[groupIdx].push(team);
-              if (solve(potIdx, groupIdx + 1)) return true;
-              groups[groupIdx].pop();
-              team.used = false;
-           }
+        for (const gIdx of validGroupIndices) {
+          groups[gIdx].push(team);
+          if (solveWC(potIdx, teamIdx + 1)) return true;
+          groups[gIdx].pop();
         }
         return false;
-     };
-     let workingPots = pots.map(pot => pot.map(t => ({...t, used: false})));
-     pots = workingPots;
-     let success = solve(0, 0);
-     if (!success) groups = Array.from({length: 8}, (_, i) => [pots[0][i], pots[1][i], pots[2][i], pots[3][i]].filter(Boolean));
+      };
+
+      if (solveWC(0, 0)) {
+        finalGroups = groups;
+        break;
+      }
+    }
   } else {
-     let steps = 0;
-     const solve = (potIdx, groupIdx) => {
-        if (++steps > 2500) return false;
+    // Sorteo de UEFA Champions League:
+    // - 1 equipo de cada bombo por grupo (del más fuerte al más débil)
+    // - Restricción de país/liga: NO coinciden dos clubes de la misma liga en el mismo grupo
+    // - Azar puro en la asignación: las bolas/grupos se sortean aleatoriamente para evitar determinismo
+    for (let attempt = 0; attempt < 250; attempt++) {
+      const pots = basePots.map(pot => [...pot].sort(() => Math.random() - 0.5));
+      const groups: any[][] = Array.from({ length: 8 }, () => []);
+
+      let steps = 0;
+      const solveCL = (potIdx: number, teamIdx: number): boolean => {
+        if (++steps > 3500) return false;
         if (potIdx === 4) return true;
-        if (groupIdx === 8) return solve(potIdx + 1, 0);
+        if (teamIdx === 8) return solveCL(potIdx + 1, 0);
 
-        for (let i = 0; i < pots[potIdx].length; i++) {
-           const team = pots[potIdx][i];
-           if (team.used) continue;
+        const team = pots[potIdx][teamIdx];
+        const validGroupIndices = [0, 1, 2, 3, 4, 5, 6, 7]
+          .filter(gIdx => groups[gIdx].length === potIdx)
+          .filter(gIdx => !groups[gIdx].some(existing => existing.league && team.league && existing.league === team.league))
+          .sort(() => Math.random() - 0.5);
 
-           const sameLeagueCount = groups[groupIdx].filter(t => t.league === team.league).length;
-           if (sameLeagueCount === 0) {
-              team.used = true;
-              groups[groupIdx].push(team);
-              if (solve(potIdx, groupIdx + 1)) return true;
-              groups[groupIdx].pop();
-              team.used = false;
-           }
+        for (const gIdx of validGroupIndices) {
+          groups[gIdx].push(team);
+          if (solveCL(potIdx, teamIdx + 1)) return true;
+          groups[gIdx].pop();
         }
         return false;
-     };
-     let workingPots = pots.map(pot => pot.map(t => ({...t, used: false})));
-     pots = workingPots;
-     let success = solve(0, 0);
-     if (!success) groups = Array.from({length: 8}, (_, i) => [pots[0][i], pots[1][i], pots[2][i], pots[3][i]].filter(Boolean));
+      };
+
+      if (solveCL(0, 0)) {
+        finalGroups = groups;
+        break;
+      }
+    }
   }
 
-  const formattedGroups = groups.map((g, i) => ({ name: 'Grupo ' + String.fromCharCode(65 + i), teamIds: g.map(t => t.id) }));
-  return { teams: pool, groups: formattedGroups, matchday: 0, history: [], phase: 'groups', showWinner: false, disqualified: false, userTeamId: pool[0].id, bracket: null,
-    participantsFrozen: true, participantsLockedAt: Date.now(),
-    participantsSources: pool.map(t => ({ name: t.name, origin: t.clOrigin || 'preset', provisional: !!t.clProvisional })) };
+  // Fallback seguro si no se encuentra solución
+  if (!finalGroups) {
+    finalGroups = Array.from({ length: 8 }, (_, i) => [
+      basePots[0][i],
+      basePots[1][i],
+      basePots[2][i],
+      basePots[3][i]
+    ].filter(Boolean));
+  }
+
+  // Ordenar dentro de cada grupo para garantizar que van del más fuerte al más débil (Bombo 1 -> Bombo 4)
+  finalGroups = finalGroups.map(group =>
+    [...group].sort((a, b) => {
+      const pA = (a.att || 1) + (a.opp || 1) + (a.def || 1);
+      const pB = (b.att || 1) + (b.opp || 1) + (b.def || 1);
+      return pB - pA;
+    })
+  );
+
+  // Aplanar todos los equipos y reindexar IDs limpiamente del 1 al 32
+  const allTeams = finalGroups.flat();
+  const reindexedTeams = allTeams.map((t, idx) => ({ ...t, id: idx + 1, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }));
+
+  let cursor = 0;
+  const formattedGroups = finalGroups.map((g, i) => {
+    const groupTeamIds: number[] = [];
+    for (let k = 0; k < g.length; k++) {
+      groupTeamIds.push(reindexedTeams[cursor].id);
+      cursor++;
+    }
+    return {
+      name: 'Grupo ' + String.fromCharCode(65 + i),
+      teamIds: groupTeamIds
+    };
+  });
+
+  return {
+    teams: reindexedTeams,
+    groups: formattedGroups,
+    matchday: 0,
+    history: [],
+    phase: 'groups',
+    showWinner: false,
+    disqualified: false,
+    userTeamId: reindexedTeams[0]?.id || 1,
+    bracket: null,
+    participantsFrozen: true,
+    participantsLockedAt: Date.now(),
+    participantsSources: reindexedTeams.map(t => ({
+      name: t.name,
+      origin: t.clOrigin || 'preset',
+      provisional: !!t.clProvisional
+    }))
+  };
 };
 
 
@@ -2371,7 +2498,7 @@ const ConfigPanel = ({ initialComp, compId, onSave, onCancel, onTotalReset }) =>
       initializedPool.slice(0, 8), initializedPool.slice(8, 16),
       initializedPool.slice(16, 24), initializedPool.slice(24, 32)
     ];
-    const drawData = drawKnockoutGroups(initializedPool, isWCTournament, false);
+    const drawData = drawKnockoutGroups(initializedPool, isWCTournament, true);
     setDrawModal({ step: 'pots', pots, groups: drawData.groups, drawData });
   };
 
@@ -3200,13 +3327,14 @@ function DiceFootballApp() {
         };
       });
 
-      // ¿El club del modo carrera se clasificó? (1ª División, top CL_SPOTS)
+      // ¿El club del modo carrera se clasificó? (1ª División, top 4 o top 8 en Miscelánea)
       const careerQualifiedName = (() => {
         if (!career.active || !career.teamId || career.div !== 1) return null;
         const comp = next[career.compId];
         const table = [...(comp?.teams || [])].sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
         const pos = table.findIndex(t => t.id === career.teamId) + 1;
-        return pos > 0 && pos <= CL_SPOTS ? table[pos - 1].name : null;
+        const maxSpots = career.compId === 'L7' ? 8 : 4;
+        return pos > 0 && pos <= maxSpots ? table[pos - 1].name : null;
       })();
 
       // Champions ÚNICA con las clasificaciones finales reales (participantes congelados).
@@ -4566,21 +4694,40 @@ function DiceFootballApp() {
             message: `🛡️ ¡Inmunidad Médica activa (${newImmunityWeeks} sem.) evitó la sobrecarga en ${attrLabels[affected]}!`
           };
         } else {
-          // NO TIENE INMUNIDAD: ACTIVAR MODAL DE ALERTA MÉDICA Y DETENER SIMULACIÓN HASTA QUE EL USUARIO DECIDA
-          const isDiv2 = career.div === 2;
-          const isChampionsOrElite = (career.tier >= 5) || (career.inChampions);
-          const physioCost = isDiv2 ? 12 : isChampionsOrElite ? 30 : 20;
-          const categoryLabel = isDiv2 ? 'Segunda División' : isChampionsOrElite ? 'Champions League / Élite' : 'Primera División';
+          // Si estamos simulando desde la interfaz general (view !== 'career'), NO lanzar alerta médica y aceptar automáticamente por defecto la baja médica
+          if (view !== 'career') {
+            trainingFeedback = {
+              simulated: true,
+              die: 6,
+              peGained: 0,
+              peCost: 0,
+              physioPaid: false,
+              injuryOccurred: true,
+              immunityPrevented: false,
+              statLost: attrLabels[affected],
+              newImmunityWeeks: 3,
+              message: `Baja médica aceptada: -1 ${attrLabels[affected]} en este partido simulado. Alta médica automática tras el encuentro (+3 sem. Inmunidad Médica).`
+            };
+            injuryAttr = affected;
+            injuryOccurredInSim = true;
+            newImmunityWeeks = 3;
+          } else {
+            // Modal de alerta médica y detener simulación hasta que el usuario decida (sólo en interfaz de carrera)
+            const isDiv2 = career.div === 2;
+            const isChampionsOrElite = (career.tier >= 5) || (career.inChampions);
+            const physioCost = isDiv2 ? 12 : isChampionsOrElite ? 30 : 20;
+            const categoryLabel = isDiv2 ? 'Segunda División' : isChampionsOrElite ? 'Champions League / Élite' : 'Primera División';
 
-          setSimulationInjuryAlert({
-            affectedAttr: affected,
-            attrLabel: attrLabels[affected],
-            die: 6,
-            physioCost,
-            categoryLabel,
-            isChampions: false
-          });
-          return;
+            setSimulationInjuryAlert({
+              affectedAttr: affected,
+              attrLabel: attrLabels[affected],
+              die: 6,
+              physioCost,
+              categoryLabel,
+              isChampions: false
+            });
+            return;
+          }
         }
       }
     } else if (career.lastTrainingResult) {
@@ -4772,13 +4919,14 @@ function DiceFootballApp() {
         };
       });
 
-      // ¿El club del modo carrera se clasificó? (1ª División, top CL_SPOTS)
+      // ¿El club del modo carrera se clasificó? (1ª División, top 4 o top 8 en Miscelánea)
       const careerQualifiedName = (() => {
         if (!career.active || !career.teamId || career.div !== 1) return null;
         const comp = next[career.compId];
         const table = [...(comp?.teams || [])].sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
         const pos = table.findIndex(t => t.id === career.teamId) + 1;
-        return pos > 0 && pos <= CL_SPOTS ? table[pos - 1].name : null;
+        const maxSpots = career.compId === 'L7' ? 8 : 4;
+        return pos > 0 && pos <= maxSpots ? table[pos - 1].name : null;
       })();
 
       const cl = getAutoFillData('C1', next, careerQualifiedName ? [careerQualifiedName] : []);
@@ -5041,12 +5189,12 @@ function DiceFootballApp() {
           repGained,
           headline: `⭐ UEFA Champions League · ${clPhaseLabel(currentPhase)}`,
           summary: isChampionsWinner
-            ? `🏆 ¡CAMPEÓN DE LA UEFA CHAMPIONS LEAGUE! Derrotas a ${rivalName} en la Gran Final. Ganancia total: +${totalPeGained} PE (+${matchPeGained} partido${extraTrainingPe ? `, +${extraTrainingPe} entreno` : ''}) y +${repGained} reputación.`
+            ? `🏆 ¡CAMPEÓN DE LA UEFA CHAMPIONS LEAGUE! Derrotas a ${rivalName} en la Gran Final. Ganancia total: +${totalPeGained} PE (+${matchPeGained} partido${extraTrainingPe ? `, +${extraTrainingPe} entreno` : ''}) y ${repGained > 0 ? `+${repGained}` : repGained} reputación.`
             : result === 'W'
-            ? `¡Victoria europea! ${myGf}-${myGa} contra ${rivalName}. Sumas +${totalPeGained} PE (+${matchPeGained} partido${extraTrainingPe ? `, +${extraTrainingPe} entreno` : ''}) y +${repGained} reputación.`
+            ? `¡Victoria europea! ${myGf}-${myGa} contra ${rivalName}. Sumas +${totalPeGained} PE (+${matchPeGained} partido${extraTrainingPe ? `, +${extraTrainingPe} entreno` : ''}) y ${repGained > 0 ? `+${repGained}` : repGained} reputación.`
             : result === 'D'
-            ? `Empate ${myGf}-${myGa} contra ${rivalName}. Sumas +${totalPeGained} PE (+${matchPeGained} partido${extraTrainingPe ? `, +${extraTrainingPe} entreno` : ''}) y +${repGained} reputación.`
-            : `Derrota ${myGf}-${myGa} contra ${rivalName} en la Champions League.`
+            ? `Empate ${myGf}-${myGa} contra ${rivalName}. Sumas +${totalPeGained} PE (+${matchPeGained} partido${extraTrainingPe ? `, +${extraTrainingPe} entreno` : ''}) y ${repGained > 0 ? `+${repGained}` : repGained} reputación.`
+            : `Derrota ${myGf}-${myGa} contra ${rivalName} en la Champions League (${repGained > 0 ? `+${repGained}` : repGained} reputación).`
         },
         seasonLog: [
           {
@@ -5242,16 +5390,35 @@ function DiceFootballApp() {
             message: `🛡️ ¡Inmunidad Médica activa (${newImmunityWeeks} sem.) evitó la sobrecarga en ${attrLabels[affected]}!`
           };
         } else {
-          // Modal de alerta médica de simulación para Champions League
-          setSimulationInjuryAlert({
-            affectedAttr: affected,
-            attrLabel: attrLabels[affected],
-            die: 6,
-            physioCost: 30,
-            categoryLabel: 'UEFA Champions League / Élite',
-            isChampions: true
-          });
-          return;
+          // Si estamos simulando desde la interfaz general (view !== 'career'), NO lanzar alerta médica y aceptar automáticamente por defecto la baja médica
+          if (view !== 'career') {
+            trainingFeedback = {
+              simulated: true,
+              die: 6,
+              peGained: 0,
+              peCost: 0,
+              physioPaid: false,
+              injuryOccurred: true,
+              immunityPrevented: false,
+              statLost: attrLabels[affected],
+              newImmunityWeeks: 3,
+              message: `Baja médica aceptada: -1 ${attrLabels[affected]} en este partido simulado. Alta médica automática tras el encuentro (+3 sem. Inmunidad Médica).`
+            };
+            injuryAttr = affected;
+            injuryOccurredInSim = true;
+            newImmunityWeeks = 3;
+          } else {
+            // Modal de alerta médica de simulación para Champions League (sólo en interfaz de carrera)
+            setSimulationInjuryAlert({
+              affectedAttr: affected,
+              attrLabel: attrLabels[affected],
+              die: 6,
+              physioCost: 30,
+              categoryLabel: 'UEFA Champions League / Élite',
+              isChampions: true
+            });
+            return;
+          }
         }
       }
     } else if (career.lastTrainingResult) {
@@ -5524,7 +5691,8 @@ function DiceFootballApp() {
           const comp = next[career.compId];
           const table = [...(comp?.teams || [])].sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
           const pos = table.findIndex(t => t.id === career.teamId) + 1;
-          return pos > 0 && pos <= CL_SPOTS ? table[pos - 1].name : null;
+          const maxSpots = career.compId === 'L7' ? 8 : 4;
+          return pos > 0 && pos <= maxSpots ? table[pos - 1].name : null;
         })();
 
         const cl = getAutoFillData('C1', next, careerQualifiedName ? [careerQualifiedName] : []);
@@ -5621,8 +5789,9 @@ function DiceFootballApp() {
     const contractStart = career.contractStart || career.startedSeason || season;
     const seasonsServed = season - contractStart + 1;
     const contractEnd = !fired && seasonsServed >= (career.contractSeasons || CONTRACT_SEASONS);
-    // Clasificación europea para la próxima Champions global
-    const clQualified = career.div === 1 && position <= CL_SPOTS;
+    // Clasificación europea para la próxima Champions global (Top 4 en ligas estándar, Top 8 en Miscelánea)
+    const maxClSpots = career.compId === 'L7' ? 8 : 4;
+    const clQualified = career.div === 1 && position <= maxClSpots;
     const badSeason = objectivesMet === 0 || performance.score <= -2;
     const badStreak = badSeason ? (career.badStreak || 0) + 1 : 0;
 
@@ -8222,9 +8391,9 @@ function DiceFootballApp() {
           )}
         </AnimatePresence>
         <AnimatePresence>
-          {simulationInjuryAlert && (
+          {simulationInjuryAlert && view === 'career' && (
             <SimulationInjuryAlertModal
-              isOpen={!!simulationInjuryAlert}
+              isOpen={!!simulationInjuryAlert && view === 'career'}
               affectedAttr={simulationInjuryAlert.affectedAttr}
               attrLabel={simulationInjuryAlert.attrLabel}
               die={simulationInjuryAlert.die}
