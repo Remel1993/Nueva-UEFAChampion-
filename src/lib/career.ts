@@ -11,15 +11,15 @@ export const CAREER_DIV = 2; // Segunda División
 // Duración máxima de un contrato: al terminar hay que renovar o cambiar de aires
 export const CONTRACT_SEASONS = 3;
 
-// Plazas de clasificación a Champions en 1ª División (4 para ligas estándar, 8 para Miscelánea)
+// Plazas de clasificación a Champions en 1ª División (4 plazas directas para las 8 ligas = 32 clubes)
 export const CL_SPOTS = 4;
-export const getClSpots = (compId?: string) => compId === 'L7' ? 8 : 4;
+export const getClSpots = (_compId?: string) => 4;
 
 // Clases de liga (GDD §4)
 export const LEAGUE_CLASS = {
   L1: 'A', L2: 'A', L3: 'A', L4: 'A', // Élite
   L6: 'B', L5: 'B',                   // Estratégica / consolidación
-  L7: 'C'                             // Desarrollo
+  L7: 'C', L8: 'C'                    // Desarrollo (Miscelánea A y Miscelánea B)
 };
 
 export const CLASS_INFO = {
