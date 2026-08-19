@@ -405,9 +405,9 @@ const drawKnockoutGroups = (pool, isWC, randomize) => {
 
 const getAutoFillData = (compId, compsState, forceNames = []) => {
   const isWC = compId === 'C2';
-  let pool = isWC ? buildDynamicWCPool({ randomize: false }) : buildCLPool(compsState, forceNames);
+  let pool = isWC ? buildDynamicWCPool({ randomize: true }) : buildCLPool(compsState, forceNames);
   pool = pool.map((t, i) => ({ ...t, id: i + 1, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }));
-  return drawKnockoutGroups(pool, isWC, false);
+  return drawKnockoutGroups(pool, isWC, true);
 };
 
 const getShuffleData = (compId, compsState) => {
@@ -2187,8 +2187,9 @@ const ConfigPanel = ({ initialComp, compId, onSave, onCancel, onTotalReset }) =>
     diff: number;
   } | null>(null);
 
-  // Estados para anexar nuevos países a la Copa del Mundo
+  // Estados para competiciones de copa (Champions y Copa del Mundo)
   const isWC = compId === 'C2' || draft.id === 'C2' || !!draft.isWorldCup || (draft.name || '').includes('Mundial') || (draft.name || '').includes('Copa del Mundo');
+  const isCL = compId === 'C1' || draft.id === 'C1' || (draft.name || '').includes('Champions');
   const [newCountryName, setNewCountryName] = useState('');
   const [newCountryAtt, setNewCountryAtt] = useState(3);
   const [newCountryOpp, setNewCountryOpp] = useState(3);
@@ -2203,7 +2204,7 @@ const ConfigPanel = ({ initialComp, compId, onSave, onCancel, onTotalReset }) =>
     : (initialComp.matchday > 0 || initialComp.history?.length > 0);
 
   const handleSaveAttempt = () => {
-    if (isWC) {
+    if (isWC || isCL) {
       const count = (draft.teams || []).length;
       if (count > 32) {
         setValidationWarningModal({
@@ -2346,17 +2347,21 @@ const ConfigPanel = ({ initialComp, compId, onSave, onCancel, onTotalReset }) =>
     setTimeout(() => setAnnexToast(null), 3500);
   };
 
-  const handleDrawUI = (type) => {
+  const handleDrawUI = () => {
     if (hasStarted) return;
     const isWCTournament = isWC;
     let pool = [];
 
     if (isWCTournament) {
       const customTeams = draft.teams && draft.teams.length > 0 ? [...draft.teams] : [];
-      pool = buildDynamicWCPool({ randomize: type === 'shuffle', customTeams });
+      pool = buildDynamicWCPool({ randomize: false, customTeams });
     } else {
-      const compsState = JSON.parse(window.localStorage.getItem(`${APP_ID}_comps`));
-      pool = buildCLPool(compsState || getDefaultComps());
+      const customTeams = draft.teams && draft.teams.length > 0 ? [...draft.teams] : [];
+      let compsState: any = null;
+      try {
+        compsState = JSON.parse(window.localStorage.getItem(`${APP_ID}_comps`) || '{}');
+      } catch (e) {}
+      pool = customTeams.length >= 32 ? customTeams : buildCLPool(compsState || getDefaultComps());
     }
 
     const initializedPool = pool.slice(0, 32).map((t, i) => ({ ...t, id: i + 1, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 }));
@@ -2366,7 +2371,7 @@ const ConfigPanel = ({ initialComp, compId, onSave, onCancel, onTotalReset }) =>
       initializedPool.slice(0, 8), initializedPool.slice(8, 16),
       initializedPool.slice(16, 24), initializedPool.slice(24, 32)
     ];
-    const drawData = drawKnockoutGroups(initializedPool, isWCTournament, type === 'shuffle');
+    const drawData = drawKnockoutGroups(initializedPool, isWCTournament, false);
     setDrawModal({ step: 'pots', pots, groups: drawData.groups, drawData });
   };
 
@@ -2412,7 +2417,9 @@ const ConfigPanel = ({ initialComp, compId, onSave, onCancel, onTotalReset }) =>
                     </div>
                 ) : (
                     <div className='space-y-4 mb-6 flex-grow flex flex-col'>
-                         <p className='text-[10px] text-center text-slate-300 font-bold uppercase'>8 Grupos formados respetando reglas continentales oficiales.</p>
+                         <p className='text-[10px] text-center text-slate-300 font-bold uppercase'>
+                           {isWC ? '8 Grupos formados respetando reglas continentales oficiales.' : '8 Grupos formados sin coincidencia de equipos del mismo país.'}
+                         </p>
                          <div className='grid grid-cols-1 sm:grid-cols-2 gap-3 flex-grow'>
                              {drawModal.groups.map((g, i) => (
                                  <div key={i} className='bg-slate-900/50 p-3 rounded-2xl border border-white/10'>
@@ -2452,12 +2459,12 @@ const ConfigPanel = ({ initialComp, compId, onSave, onCancel, onTotalReset }) =>
           <div className='min-w-0'>
             <div className='flex items-center gap-2'>
               <h2 className='text-base sm:text-lg font-black italic uppercase drop-shadow-md text-white truncate'>
-                {isWC ? 'Copa del Mundo' : 'Ajustes'}
+                {isWC ? 'Copa del Mundo' : isCL ? 'Champions League' : 'Ajustes'}
               </h2>
-              {isWC && <span className='text-[8px] bg-yellow-500/20 text-yellow-300 font-black px-2 py-0.5 rounded-full border border-yellow-500/30 uppercase shrink-0'>Config</span>}
+              {(isWC || isCL) && <span className='text-[8px] bg-yellow-500/20 text-yellow-300 font-black px-2 py-0.5 rounded-full border border-yellow-500/30 uppercase shrink-0'>Config</span>}
             </div>
             <p className='text-[8px] font-bold text-slate-400 uppercase tracking-wider truncate'>
-              {isWC ? 'Gestión de selecciones y sorteo' : 'Edición de equipos y atributos'}
+              {isWC ? 'Gestión de selecciones y sorteo por bombos' : isCL ? 'Gestión de clubes y sorteo por bombos' : 'Edición de equipos y atributos'}
             </p>
           </div>
         </div>
@@ -2475,10 +2482,51 @@ const ConfigPanel = ({ initialComp, compId, onSave, onCancel, onTotalReset }) =>
         </motion.div>
       )}
 
-      {/* SECCIÓN ESPECIAL Y PRINCIPAL: GESTIÓN DE COPA DEL MUNDO */}
+      {/* SECCIÓN ESPECIAL: GESTIÓN DE CHAMPIONS LEAGUE (SOLO SORTEO POR BOMBOS) */}
+      {isCL && (
+        <div className='space-y-4 mb-6'>
+          <div className='bg-gradient-to-br from-blue-950/70 via-slate-900/90 to-indigo-950/70 backdrop-blur-md rounded-3xl p-4 sm:p-5 border-2 border-blue-500/30 shadow-2xl space-y-3.5'>
+            <div className='flex items-center justify-between'>
+              <div className='flex items-center gap-2.5'>
+                <div className='w-10 h-10 rounded-2xl bg-blue-500/20 flex items-center justify-center border border-blue-500/40 text-blue-300 shadow-inner'>
+                  <Trophy size={22} className='text-amber-300' />
+                </div>
+                <div>
+                  <h3 className='text-sm sm:text-base font-black uppercase italic text-white'>UEFA Champions League</h3>
+                  <p className='text-[9px] text-blue-200 font-bold uppercase tracking-wider'>32 Clubes en 8 Grupos (A - H)</p>
+                </div>
+              </div>
+              <div className='px-2.5 py-1 rounded-xl text-[10px] font-black uppercase border bg-blue-950/60 text-blue-300 border-blue-500/40'>
+                {(draft.teams || []).length} / 32
+              </div>
+            </div>
+
+            {/* ÚNICA OPCIÓN DE SORTEO SOLICITADA */}
+            <button
+              onClick={() => handleDrawUI()}
+              disabled={hasStarted}
+              className={`w-full py-3.5 px-4 rounded-2xl text-[10px] sm:text-xs font-black uppercase italic tracking-wider flex items-center justify-center gap-2 transition-all shadow-xl active:scale-95 ${
+                hasStarted
+                  ? 'opacity-40 cursor-not-allowed bg-blue-950/20 border border-blue-500/10 text-blue-400/50'
+                  : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 hover:from-blue-500 hover:to-indigo-500 text-white border-2 border-blue-400/50 shadow-blue-500/25'
+              }`}
+            >
+              <ShieldIcon size={16} className='text-yellow-400' /> Sorteo por Bombos
+            </button>
+
+            {hasStarted && (
+              <p className='text-[8px] text-center text-amber-300 font-bold uppercase italic mt-1'>
+                Torneo en curso. Para sortear de nuevo, concluye la edición o reinicia la competición.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* SECCIÓN ESPECIAL Y PRINCIPAL: GESTIÓN DE COPA DEL MUNDO (SOLO SORTEO POR BOMBOS) */}
       {isWC && (
         <div className='space-y-4 mb-6'>
-          {/* PANEL 1: ESTADO DEL MUNDIAL Y GENERACIÓN EN 1 CLIC */}
+          {/* PANEL 1: ESTADO DEL MUNDIAL Y SORTEO POR BOMBOS */}
           <div className='bg-gradient-to-br from-indigo-950/70 via-slate-900/90 to-blue-950/70 backdrop-blur-md rounded-3xl p-4 sm:p-5 border-2 border-indigo-500/30 shadow-2xl space-y-3.5'>
             <div className='flex items-center justify-between'>
               <div className='flex items-center gap-2.5'>
@@ -2499,9 +2547,9 @@ const ConfigPanel = ({ initialComp, compId, onSave, onCancel, onTotalReset }) =>
               </div>
             </div>
 
-            {/* BOTÓN PRINCIPAL DE GENERACIÓN INSTANTÁNEA */}
+            {/* ÚNICA OPCIÓN DE SORTEO SOLICITADA */}
             <button
-              onClick={handleGenerateAndDrawWC}
+              onClick={() => handleDrawUI()}
               disabled={hasStarted}
               className={`w-full py-3.5 px-4 rounded-2xl text-[10px] sm:text-xs font-black uppercase italic tracking-wider flex items-center justify-center gap-2 transition-all shadow-xl active:scale-95 ${
                 hasStarted
@@ -2509,33 +2557,8 @@ const ConfigPanel = ({ initialComp, compId, onSave, onCancel, onTotalReset }) =>
                   : 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-500 hover:to-teal-500 text-white border-2 border-emerald-400/50 shadow-emerald-500/25'
               }`}
             >
-              <Wand2 size={16} className='text-yellow-300' /> Generar 32 Selecciones Oficiales y Sortear Grupos
+              <ShieldIcon size={16} className='text-yellow-400' /> Sorteo por Bombos
             </button>
-
-            <div className='grid grid-cols-2 gap-2'>
-              <button
-                onClick={() => handleDrawUI('auto')}
-                disabled={hasStarted}
-                className={`py-2.5 px-3 border rounded-xl text-[9px] font-black uppercase italic flex items-center justify-center gap-1.5 transition-all backdrop-blur-md ${
-                  hasStarted
-                    ? 'opacity-40 cursor-not-allowed bg-yellow-900/20 border-yellow-500/10 text-yellow-500/50'
-                    : 'bg-yellow-600/20 text-yellow-200 border-yellow-500/40 hover:bg-yellow-600/30 active:scale-95'
-                }`}
-              >
-                <ShieldIcon size={13} className='text-yellow-400'/> Sorteo por Bombos
-              </button>
-              <button
-                onClick={() => handleDrawUI('shuffle')}
-                disabled={hasStarted}
-                className={`py-2.5 px-3 border rounded-xl text-[9px] font-black uppercase italic flex items-center justify-center gap-1.5 transition-all backdrop-blur-md ${
-                  hasStarted
-                    ? 'opacity-40 cursor-not-allowed bg-indigo-900/20 border-indigo-500/10 text-indigo-500/50'
-                    : 'bg-indigo-600/20 text-indigo-200 border-indigo-500/40 hover:bg-indigo-600/30 active:scale-95'
-                }`}
-              >
-                <Shuffle size={13} className='text-indigo-400'/> Sorteo Aleatorio
-              </button>
-            </div>
 
             {hasStarted && (
               <p className='text-[8px] text-center text-amber-300 font-bold uppercase italic mt-1'>
@@ -6273,7 +6296,6 @@ function DiceFootballApp() {
       // y las demás ligas resuelven automáticamente esta misma jornada global.
       simulateOtherLeaguesToGlobal(activeCompId);
 
-
     } else {
        processCupRound(matchState);
     }
@@ -6322,8 +6344,6 @@ function DiceFootballApp() {
       showWinner: false,
       showWinner2: false
     });
-
-
   };
 
   const handleTotalReset = (compId) => {
@@ -6403,20 +6423,12 @@ function DiceFootballApp() {
           <p className='text-[10px] font-bold text-slate-300 uppercase tracking-widest mb-10 drop-shadow-md'>Faltan equipos en {isDiv2 ? '2ª' : '1ª'} División.</p>
           <div className='space-y-4 w-full max-w-xs'>
             {!isLeague && (
-              <>
-                <button onClick={() => {
-                   const compsState = JSON.parse(window.localStorage.getItem(`${APP_ID}_comps`));
-                   updateActiveComp(getAutoFillData(activeCompId, compsState));
-                }} className='w-full bg-blue-600/80 backdrop-blur-md hover:bg-blue-500 text-white py-4 rounded-2xl text-[11px] font-black uppercase italic tracking-widest shadow-xl transition-all active:scale-95 flex justify-center items-center gap-2'>
-                  <Wand2 size={16}/> Auto-Rellenar
-                </button>
-                <button onClick={() => {
-                   const compsState = JSON.parse(window.localStorage.getItem(`${APP_ID}_comps`));
-                   updateActiveComp(getShuffleData(activeCompId, compsState));
-                }} className='w-full bg-emerald-600/80 backdrop-blur-md hover:bg-emerald-500 text-white py-4 rounded-2xl text-[11px] font-black uppercase italic tracking-widest shadow-xl transition-all active:scale-95 flex justify-center items-center gap-2'>
-                  <Shuffle size={16}/> Sorteo Dinámico
-                </button>
-              </>
+              <button onClick={() => {
+                 const compsState = JSON.parse(window.localStorage.getItem(`${APP_ID}_comps`));
+                 updateActiveComp(getShuffleData(activeCompId, compsState));
+              }} className='w-full bg-emerald-600/80 backdrop-blur-md hover:bg-emerald-500 text-white py-4 rounded-2xl text-[11px] font-black uppercase italic tracking-widest shadow-xl transition-all active:scale-95 flex justify-center items-center gap-2'>
+                <Shuffle size={16}/> Sorteo Dinámico Oficial
+              </button>
             )}
             <button onClick={() => setView('hub')} className='w-full bg-slate-900/40 backdrop-blur-md border border-white/10 text-slate-200 py-4 rounded-2xl text-[11px] font-black uppercase italic tracking-widest transition-all active:scale-95'>Volver al Inicio</button>
           </div>
@@ -7249,8 +7261,8 @@ function DiceFootballApp() {
           <div className='flex items-center gap-3 min-w-0'>
             <button onClick={() => setView('hub')} className='p-2.5 bg-slate-900/80 hover:bg-slate-800 rounded-xl text-slate-200 border border-white/10 active:scale-95 transition-all shrink-0' title='Volver al Menú Principal'><ChevronLeft size={20} /></button>
             {activeCompId && (
-              <div className='w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white border border-slate-200/90 shadow-lg p-1.5 flex items-center justify-center shrink-0 hover:scale-105 transition-transform'>
-                <CompetitionLogo compId={activeCompId} size={36} showBackground={false} />
+              <div className='w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white border border-slate-200/90 shadow-xl p-2 flex items-center justify-center shrink-0 hover:scale-105 transition-transform'>
+                <CompetitionLogo compId={activeCompId} size={44} showBackground={false} />
               </div>
             )}
             <div className='min-w-0'>
