@@ -23,7 +23,7 @@ import { SimulationInjuryAlertModal } from '@/components/SimulationInjuryAlertMo
 import {
   CAREER_LEAGUE_ID, CAREER_DIV, DEFAULT_CAREER, worstTeams, tierOf, tierCaps, peCostFor,
   peForResult, repForMatch, clampRep, objectiveFor, expectedPosition, readPerformance, buildOffers,
-  CONTRACT_SEASONS, CL_SPOTS, isSquadMaxed, clPhaseLabel, clProgressRep, fireChance, seasonObjectives,
+  CONTRACT_SEASONS, CL_SPOTS, getClSpots, isSquadMaxed, clPhaseLabel, clProgressRep, fireChance, seasonObjectives,
   remainingUpgradeCost, capPE, signingRepBonus, evaluateApplication, getMarketVacancies,
   SPECIAL_OFFICE_WEEKS, calculateCurrentSeasonWeek, getChampionsMatchKey,
   roll1D6, simOpportunity, simPenalty, simMatchGoals, simPenaltyShootout
@@ -96,7 +96,8 @@ const getDefaultComps = () => {
     'L4': getLeagueData('Liga Alemana', 'DE'),
     'L5': getLeagueData('Liga Holandesa', 'NL'),
     'L6': getLeagueData('Liga Francesa', 'FR'),
-    'L7': getLeagueData('Miscelánea', 'MI'),
+    'L7': getLeagueData('Miscelánea A', 'MI'),
+    'L8': getLeagueData('Miscelánea B', 'MB'),
     'C1': { id: 'C1', type: 'cup', name: 'Champions League', teams: [], matchday: 0, history: [], userTeamId: 1, showWinner: false, phase: 'groups', bracket: null, disqualified: false },
     'C2': { id: 'C2', type: 'cup', name: 'Copa del Mundo', teams: [], matchday: 0, history: [], userTeamId: 1, showWinner: false, phase: 'groups', bracket: null, disqualified: false }
   };
@@ -126,7 +127,7 @@ const isLeagueFinished = (comp) => {
 // ==========================================
 // Cada liga conserva su propio calendario (18 equipos = 34 jornadas, 20 = 38),
 // pero todas comparten el mismo "reloj" de temporada: la jornada global.
-const LEAGUE_IDS = ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7'];
+const LEAGUE_IDS = ['L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7', 'L8'];
 const SEASON_KEY = `${APP_ID}_season`;
 const DEFAULT_SEASON_STATE = { season: 1, globalMatchday: 1, phase: 'leagues' as 'leagues' | 'champions' };
 
@@ -175,12 +176,12 @@ const getPresetStatsForTeam = (teamName: string) => {
   for (const list of Object.values(PRESETS)) {
     if (!Array.isArray(list)) continue;
     const found = list.find((t: any) => t.name === teamName);
-    if (found) return { att: found.att, opp: found.opp, def: found.def };
+    if (found) return { att: found.att, opp: found.opp, def: found.def, color1: found.color1, color2: found.color2, league: found.league };
   }
   for (const list of Object.values(PRESETS_2)) {
     if (!Array.isArray(list)) continue;
     const found = list.find((t: any) => t.name === teamName);
-    if (found) return { att: found.att, opp: found.opp, def: found.def };
+    if (found) return { att: found.att, opp: found.opp, def: found.def, color1: found.color1, color2: found.color2, league: found.league };
   }
   return null;
 };
@@ -246,17 +247,18 @@ const computeLeagueNewSeason = (comp: any) => {
   };
 };
 
-// MODIFICADO: CL se construye con 32 plazas directas fijas según la tabla de liga:
+// MODIFICADO: CL se construye con 32 plazas directas fijas (Top 4 de cada una de las 8 ligas):
 // - España (L1): Top 4 (1º, 2º, 3º, 4º)
 // - Inglaterra (L3): Top 4 (1º, 2º, 3º, 4º)
 // - Italia (L2): Top 4 (1º, 2º, 3º, 4º)
 // - Alemania (L4): Top 4 (1º, 2º, 3º, 4º)
 // - Francia (L6): Top 4 (1º, 2º, 3º, 4º)
 // - Países Bajos (L5): Top 4 (1º, 2º, 3º, 4º)
-// - Miscelánea (L7): Top 8 (1º al 8º)
-// Total = 4 + 4 + 4 + 4 + 4 + 4 + 8 = exactamente 32 plazas directas
+// - Miscelánea A (L7): Top 4 (1º, 2º, 3º, 4º)
+// - Miscelánea B (L8): Top 4 (1º, 2º, 3º, 4º)
+// Total = 8 ligas x 4 cupos = exactamente 32 plazas directas
 const buildCLPool = (compsState: any, forceNames: string[] = []) => {
-  const leagueCodeMap: Record<string, string> = { L1: 'ES', L2: 'IT', L3: 'EN', L4: 'DE', L5: 'NL', L6: 'FR', L7: 'MI' };
+  const leagueCodeMap: Record<string, string> = { L1: 'ES', L2: 'IT', L3: 'EN', L4: 'DE', L5: 'NL', L6: 'FR', L7: 'MI', L8: 'MB' };
 
   const getSource = (compKey: string) => {
     const comp = compsState?.[compKey];
@@ -297,7 +299,7 @@ const buildCLPool = (compsState: any, forceNames: string[] = []) => {
     return ordered.slice(0, count);
   };
 
-  // 32 cupos directos estrictos: 6 ligas x 4 puestos + Miscelánea x 8 puestos
+  // 32 cupos directos estrictos: 8 ligas x 4 puestos cada una
   let pool = [
     ...pull('L1', 4), // 🇪🇸 España: 1º al 4º
     ...pull('L3', 4), // 🏴󠁧󠁢󠁥󠁮󠁧󠁿 Inglaterra: 1º al 4º
@@ -305,7 +307,8 @@ const buildCLPool = (compsState: any, forceNames: string[] = []) => {
     ...pull('L4', 4), // 🇩🇪 Alemania: 1º al 4º
     ...pull('L6', 4), // 🇫🇷 Francia: 1º al 4º
     ...pull('L5', 4), // 🇳🇱 Países Bajos: 1º al 4º
-    ...pull('L7', 8), // 🌍 Miscelánea: 1º al 8º
+    ...pull('L7', 4), // 🌍 Miscelánea A: 1º al 4º
+    ...pull('L8', 4), // 🏔️ Miscelánea B: 1º al 4º
   ];
 
   // Sin duplicados por nombre
@@ -315,7 +318,7 @@ const buildCLPool = (compsState: any, forceNames: string[] = []) => {
   // Respaldo de seguridad solo si alguna liga no tuviera equipos configurados
   if (pool.length < 32) {
     const eligible: any[] = [];
-    ['L1','L3','L4','L2','L6','L5','L7'].forEach(k => {
+    ['L1','L3','L4','L2','L6','L5','L7','L8'].forEach(k => {
       const comp = compsState?.[k];
       if (comp && Array.isArray(comp.teams)) {
         comp.teams.forEach((t: any) => {
@@ -343,7 +346,7 @@ const buildCLPool = (compsState: any, forceNames: string[] = []) => {
   (forceNames || []).forEach((name: string) => {
     if (!name || pool.some(t => t.name === name)) return;
     let forced: any = null;
-    ['L1','L2','L3','L4','L5','L6','L7'].forEach(k => {
+    ['L1','L2','L3','L4','L5','L6','L7','L8'].forEach(k => {
       const comp = compsState?.[k];
       if (!forced && comp && Array.isArray(comp.teams)) {
         const found = comp.teams.find((t: any) => t.name === name);
@@ -368,7 +371,7 @@ const buildCLPool = (compsState: any, forceNames: string[] = []) => {
 
 
 const drawKnockoutGroups = (pool: any[], isWC?: boolean, randomize: boolean = true) => {
-  const leagueCodeMap: Record<string, string> = { L1: 'ES', L2: 'IT', L3: 'EN', L4: 'DE', L5: 'NL', L6: 'FR', L7: 'MI' };
+  const leagueCodeMap: Record<string, string> = { L1: 'ES', L2: 'IT', L3: 'EN', L4: 'DE', L5: 'NL', L6: 'FR', L7: 'MI', L8: 'MB' };
 
   // Normalizar y resetear estadísticas para la nueva fase de grupos
   const normalizedPool = pool.map((t) => ({
@@ -1754,7 +1757,8 @@ const ArchiveView = ({ setView, archive, selectedArchiveEntry, setSelectedArchiv
     { id: 'L4', name: 'Alemania', fullName: 'Liga Alemana', flag: '🇩🇪' },
     { id: 'L5', name: 'Países Bajos', fullName: 'Liga Holandesa', flag: '🇳🇱' },
     { id: 'L6', name: 'Francia', fullName: 'Liga Francesa', flag: '🇫🇷' },
-    { id: 'L7', name: 'Miscelánea / Portugal', fullName: 'Liga Miscelánea', flag: '🇵🇹' }
+    { id: 'L7', name: 'Miscelánea A', fullName: 'Liga Miscelánea A', flag: '🇵🇹' },
+    { id: 'L8', name: 'Miscelánea B', fullName: 'Liga Miscelánea B', flag: '🌍' }
   ];
 
   return (
@@ -1930,31 +1934,39 @@ const ArchiveView = ({ setView, archive, selectedArchiveEntry, setSelectedArchiv
 };
 
 const RulesView = ({ setView }) => (
-
   <div className='flex-grow px-4 pb-8 flex flex-col'>
     <header className='flex items-center gap-3 mb-8'>
       <button onClick={() => setView('hub')} className='p-3 bg-slate-900/30 backdrop-blur-md rounded-2xl text-slate-300 hover:text-white active:scale-95 transition-all border border-white/10'><ChevronLeft /></button>
       <h2 className='text-xl font-black uppercase italic text-blue-400 drop-shadow-md'>Reglas del Juego</h2>
     </header>
     <div className='space-y-4'>
-      <div className='bg-slate-900/30 backdrop-blur-md p-6 rounded-3xl border border-white/10 shadow-lg'>
-        <h4 className='text-xs font-black uppercase italic text-emerald-400 mb-2'>1. Dos Divisiones</h4>
-        <p className='text-[11px] font-bold text-slate-200 leading-relaxed'>Cada liga tiene 1ª y 2ª división. Al finalizar ambas, los 3 últimos de Primera descienden y los 3 primeros de Segunda ascienden, heredando e intercambiando estadísticas.</p>
+      <div className='bg-slate-900/30 backdrop-blur-md p-6 rounded-3xl border border-blue-500/20 shadow-lg'>
+        <h4 className='text-xs font-black uppercase italic text-blue-400 mb-2 flex items-center gap-1.5'>
+          <Sparkles size={14} /> 1. UEFA Champions League (32 Clubes)
+        </h4>
+        <p className='text-[11px] font-bold text-slate-200 leading-relaxed'>
+          Los <strong className='text-blue-300'>4 primeros clasificados (Top 4)</strong> de la 1ª División de cada una de las 8 ligas (LaLiga, Serie A, Premier League, Bundesliga, Eredivisie, Ligue 1, Miscelánea A y Miscelánea B) clasifican directamente a la fase de grupos de la Champions League (8 ligas × 4 cupos = 32 plazas directas).
+        </p>
       </div>
       <div className='bg-slate-900/30 backdrop-blur-md p-6 rounded-3xl border border-white/10 shadow-lg'>
-        <h4 className='text-xs font-black uppercase italic text-blue-400 mb-2'>2. Ataque y Defensa</h4>
+        <h4 className='text-xs font-black uppercase italic text-emerald-400 mb-2'>2. Dos Divisiones y Ascenso / Descenso</h4>
+        <p className='text-[11px] font-bold text-slate-200 leading-relaxed'>Cada una de las 8 ligas cuenta con 1ª y 2ª división de 18 equipos. Al finalizar la temporada, los 3 últimos de Primera (16º, 17º y 18º) descienden y los 3 primeros de Segunda (1º, 2º y 3º) ascienden.</p>
+      </div>
+      <div className='bg-slate-900/30 backdrop-blur-md p-6 rounded-3xl border border-white/10 shadow-lg'>
+        <h4 className='text-xs font-black uppercase italic text-amber-400 mb-2'>3. Ataque y Defensa</h4>
         <p className='text-[11px] font-bold text-slate-200 leading-relaxed'>Para marcar gol, el atacante debe sacar un número menor o igual a su ATK. Si lo logra, el portero rival debe sacar un número <strong className='text-white'>menor o igual a su DEF</strong> para detenerlo.</p>
       </div>
       <div className='bg-slate-900/30 backdrop-blur-md p-6 rounded-3xl border border-white/10 shadow-lg'>
-        <h4 className='text-xs font-black uppercase italic text-purple-400 mb-2'>3. Guardado Automático</h4>
-        <p className='text-[11px] font-bold text-slate-200 leading-relaxed'>Tu progreso de todas las ligas se guarda automáticamente. Cualquier edición que hagas en los equipos perdurará durante tus temporadas.</p>
+        <h4 className='text-xs font-black uppercase italic text-purple-400 mb-2'>4. Guardado Automático</h4>
+        <p className='text-[11px] font-bold text-slate-200 leading-relaxed'>Tu progreso de todas las ligas y la Champions League se guarda automáticamente en tu navegador.</p>
       </div>
     </div>
   </div>
 );
 
-const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pendingLeagueIds, allLeaguesFinished, championsFinished, onSimulateLeague, onSimulateAll, onNewSeason, onSimulateChampions, career, onOpenCareer }) => {
+const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pendingLeagueIds, allLeaguesFinished, championsFinished, onSimulateLeague, onSimulateAll, onNewSeason, onSimulateChampions, career, onOpenCareer, onSyncPresets }) => {
   const [showLeagues, setShowLeagues] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState(false);
   const globalMatchday = seasonState?.globalMatchday || 1;
   const pending = pendingLeagueIds || [];
   const leagues = [
@@ -1964,7 +1976,8 @@ const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pe
     { id: 'L4', name: 'Bundesliga', flag: '🇩🇪', country: 'Alemania' },
     { id: 'L5', name: 'Eredivisie', flag: '🇳🇱', country: 'Países Bajos' },
     { id: 'L6', name: 'Ligue 1', flag: '🇫🇷', country: 'Francia' },
-    { id: 'L7', name: 'Miscelánea', flag: '🇵🇹', country: 'Portugal / Otros' }
+    { id: 'L7', name: 'Miscelánea A', flag: '🇵🇹', country: 'Portugal / Otros' },
+    { id: 'L8', name: 'Miscelánea B', flag: '🌍', country: 'Europa Central / Este' }
   ];
 
   return (
@@ -2258,6 +2271,66 @@ const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pe
           </div>
         </button>
       </div>
+
+      {/* BOTÓN DE SINCRONIZACIÓN DE PLANTILLAS Y LIGAS */}
+      <div className='pt-1'>
+        <button
+          onClick={() => setShowSyncModal(true)}
+          className='w-full py-2.5 px-3 bg-slate-900/40 hover:bg-slate-800/60 rounded-2xl border border-white/5 hover:border-white/15 flex items-center justify-center gap-2 text-[10px] font-bold text-slate-300 hover:text-white transition-all active:scale-[0.99]'
+        >
+          <RotateCcw size={13} className='text-emerald-400' />
+          <span>Sincronizar Plantillas y Ligas Oficiales (18 Equipos)</span>
+        </button>
+      </div>
+
+      {/* MODAL DE CONFIRMACIÓN DE SINCRONIZACIÓN */}
+      <AnimatePresence>
+        {showSyncModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className='fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4'
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className='bg-slate-900 border border-emerald-500/30 rounded-3xl p-5 max-w-sm w-full space-y-4 shadow-2xl'
+            >
+              <div className='flex items-center gap-3'>
+                <div className='w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-400 shrink-0'>
+                  <RotateCcw size={20} />
+                </div>
+                <div>
+                  <h3 className='text-sm font-black uppercase italic text-white'>Sincronizar Ligas</h3>
+                  <p className='text-[10px] text-slate-400'>Actualizar equipos a 18 por liga</p>
+                </div>
+              </div>
+              <p className='text-xs text-slate-300 leading-relaxed'>
+                Esto cargará las alineaciones oficiales y equilibradas para las 8 ligas (incluyendo <strong className='text-emerald-300'>Miscelánea A</strong> y <strong className='text-emerald-300'>Miscelánea B</strong> de 18 equipos). Tu <strong>Palmarés y Salón de la Fama se conservan</strong> intactos.
+              </p>
+              <div className='flex gap-2 pt-2'>
+                <button
+                  onClick={() => setShowSyncModal(false)}
+                  className='flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold'
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => {
+                    setShowSyncModal(false);
+                    if (onSyncPresets) onSyncPresets();
+                  }}
+                  className='flex-1 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl text-xs font-black uppercase tracking-wider'
+                >
+                  Sincronizar
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <footer className='pt-4 pb-2 text-center opacity-50'>
         <p className='text-[8.5px] font-black uppercase tracking-widest text-slate-300'>
@@ -3149,29 +3222,61 @@ function DiceFootballApp() {
         const parsed = JSON.parse(saved);
         if (parsed && typeof parsed === 'object') {
           const merged = { ...defaultComps };
-          const syncList = (list: any[]) => {
-            if (!Array.isArray(list)) return list;
+          const syncList = (list: any[], fallbackList?: any[]) => {
+            if (!Array.isArray(list) || list.length === 0) return fallbackList || [];
             return list.map((t: any) => {
               const preset = getPresetStatsForTeam(t?.name);
               if (preset) {
-                return { ...t, att: preset.att, opp: preset.opp, def: preset.def };
+                return {
+                  ...t,
+                  att: preset.att,
+                  opp: preset.opp,
+                  def: preset.def,
+                  color1: preset.color1 || t.color1,
+                  color2: preset.color2 || t.color2,
+                  league: preset.league || t.league
+                };
               }
               return t;
             });
           };
 
-          Object.keys(parsed).forEach(key => {
-            if (merged[key]) {
-              const savedComp = parsed[key];
+          Object.keys(defaultComps).forEach(key => {
+            const savedComp = parsed[key];
+            if (!savedComp) {
+              merged[key] = defaultComps[key];
+              return;
+            }
+
+            // Detección y migración de ligas rebalanceadas (L7 / L8)
+            const isOutdatedL7 = key === 'L7' && (
+              !Array.isArray(savedComp.teams) ||
+              savedComp.teams.length !== 18 ||
+              savedComp.teams.some((t: any) => t.name === 'Benfica' || t.name === 'FC Porto' || t.name === 'Fenerbahçe')
+            );
+            const isOutdatedL8 = key === 'L8' && (
+              !Array.isArray(savedComp.teams) ||
+              savedComp.teams.length !== 18 ||
+              savedComp.teams.some((t: any) => t.name === 'Sporting CP' || t.name === 'Galatasaray')
+            );
+
+            if (isOutdatedL7 || isOutdatedL8) {
               merged[key] = {
-                ...merged[key],
+                ...defaultComps[key],
+                championsHistory: savedComp.championsHistory || [],
+                championsHistory2: savedComp.championsHistory2 || []
+              };
+            } else {
+              merged[key] = {
+                ...defaultComps[key],
                 ...savedComp,
-                teams: syncList(savedComp.teams || merged[key].teams),
-                teams2: syncList(savedComp.teams2 || merged[key].teams2),
+                teams: syncList(savedComp.teams, defaultComps[key].teams),
+                teams2: syncList(savedComp.teams2, defaultComps[key].teams2),
                 id: key
               };
             }
           });
+
           if (merged['C1']?.bracket) {
             merged['C1'].bracket = sanitizeChampionsBracket(merged['C1'].bracket, merged['C1'].teams);
           }
@@ -3327,13 +3432,13 @@ function DiceFootballApp() {
         };
       });
 
-      // ¿El club del modo carrera se clasificó? (1ª División, top 4 o top 8 en Miscelánea)
+      // ¿El club del modo carrera se clasificó? (1ª División, plazas directas de Champions)
       const careerQualifiedName = (() => {
         if (!career.active || !career.teamId || career.div !== 1) return null;
         const comp = next[career.compId];
         const table = [...(comp?.teams || [])].sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
         const pos = table.findIndex(t => t.id === career.teamId) + 1;
-        const maxSpots = career.compId === 'L7' ? 8 : 4;
+        const maxSpots = getClSpots(career.compId);
         return pos > 0 && pos <= maxSpots ? table[pos - 1].name : null;
       })();
 
@@ -3472,6 +3577,41 @@ function DiceFootballApp() {
       setShowSaveModal(true);
       setTimeout(() => setShowSaveModal(false), 2000);
     } catch(e) {}
+  };
+
+  // Re-sincronización forzada de plantillas y ligas oficiales de 18 equipos
+  const handleSyncAllPresets = () => {
+    const defaults = getDefaultComps();
+    setComps(prev => {
+      const next: any = { ...prev };
+      LEAGUE_IDS.forEach(id => {
+        const def = defaults[id];
+        if (!def) return;
+        const current = prev[id] || {};
+        next[id] = {
+          ...def,
+          teams: def.teams,
+          teams2: def.teams2,
+          championsHistory: current.championsHistory || [],
+          championsHistory2: current.championsHistory2 || [],
+          previousStandings: current.previousStandings || null,
+          previousStandings2: current.previousStandings2 || null,
+          matchday: 0,
+          matchday2: 0,
+          history: [],
+          history2: [],
+          showWinner: false,
+          showWinner2: false,
+          id
+        };
+      });
+      return next;
+    });
+    setSeasonState({ season: 1, globalMatchday: 1, phase: 'leagues' });
+    try {
+      window.localStorage.setItem(`${APP_ID}_comps`, JSON.stringify(defaults));
+      window.localStorage.setItem(SEASON_KEY, JSON.stringify({ season: 1, globalMatchday: 1, phase: 'leagues' }));
+    } catch (e) {}
   };
 
   const archiveCompetition = (compId, div, customWinner = null, compOverride = null) => {
@@ -4919,13 +5059,13 @@ function DiceFootballApp() {
         };
       });
 
-      // ¿El club del modo carrera se clasificó? (1ª División, top 4 o top 8 en Miscelánea)
+      // ¿El club del modo carrera se clasificó? (1ª División, plazas directas de Champions)
       const careerQualifiedName = (() => {
         if (!career.active || !career.teamId || career.div !== 1) return null;
         const comp = next[career.compId];
         const table = [...(comp?.teams || [])].sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
         const pos = table.findIndex(t => t.id === career.teamId) + 1;
-        const maxSpots = career.compId === 'L7' ? 8 : 4;
+        const maxSpots = getClSpots(career.compId);
         return pos > 0 && pos <= maxSpots ? table[pos - 1].name : null;
       })();
 
@@ -5691,7 +5831,7 @@ function DiceFootballApp() {
           const comp = next[career.compId];
           const table = [...(comp?.teams || [])].sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
           const pos = table.findIndex(t => t.id === career.teamId) + 1;
-          const maxSpots = career.compId === 'L7' ? 8 : 4;
+          const maxSpots = getClSpots(career.compId);
           return pos > 0 && pos <= maxSpots ? table[pos - 1].name : null;
         })();
 
@@ -5789,8 +5929,8 @@ function DiceFootballApp() {
     const contractStart = career.contractStart || career.startedSeason || season;
     const seasonsServed = season - contractStart + 1;
     const contractEnd = !fired && seasonsServed >= (career.contractSeasons || CONTRACT_SEASONS);
-    // Clasificación europea para la próxima Champions global (Top 4 en ligas estándar, Top 8 en Miscelánea)
-    const maxClSpots = career.compId === 'L7' ? 8 : 4;
+    // Clasificación europea para la próxima Champions global (4 plazas directas por liga)
+    const maxClSpots = getClSpots(career.compId);
     const clQualified = career.div === 1 && position <= maxClSpots;
     const badSeason = objectivesMet === 0 || performance.score <= -2;
     const badStreak = badSeason ? (career.badStreak || 0) + 1 : 0;
@@ -7728,12 +7868,19 @@ function DiceFootballApp() {
                   return Array.isArray(rows) && rows.map((t, i) => {
                   const isUser = standingsView !== 'previous' && t.id === activeComp.userTeamId;
                   const isPromo = standingsView !== 'previous' && isDiv2 && i < 3;
+                  const isChampions = standingsView !== 'previous' && !isDiv2 && i < 4;
                   const isRelegation = standingsView !== 'previous' && !isDiv2 && i >= rows.length - 3;
-                  const rowBg = isUser ? 'bg-blue-600/30' : (isPromo ? 'bg-emerald-900/20' : (isRelegation ? 'bg-red-900/20' : ''));
+                  const rowBg = isUser ? 'bg-blue-600/30' : (isPromo ? 'bg-emerald-950/20' : (isChampions ? 'bg-blue-950/25' : (isRelegation ? 'bg-red-950/20' : '')));
 
                   return (
                     <tr key={t.id} className={rowBg}>
-                      <td className={'p-3 text-[10px] font-black italic sticky z-40 bg-[#0f172a] ' + (isPromo ? 'text-emerald-400' : isRelegation ? 'text-red-400' : 'text-slate-300')} style={{ left: 0 }}>{i+1}</td>
+                      <td className={'p-3 text-[10px] font-black italic sticky z-40 bg-[#0f172a] ' + (isPromo ? 'text-emerald-400' : isChampions ? 'text-blue-400' : isRelegation ? 'text-red-400' : 'text-slate-300')} style={{ left: 0 }}>
+                        <span className='inline-flex items-center gap-1'>
+                          {i + 1}
+                          {isChampions && <span className='w-1.5 h-1.5 rounded-full bg-blue-400 shadow-[0_0_6px_rgba(96,165,250,0.8)]' title='Puesto UEFA Champions League'></span>}
+                          {isPromo && <span className='w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]' title='Ascenso directo'></span>}
+                        </span>
+                      </td>
                       <td className='p-3 flex items-center gap-2 sticky z-40 bg-[#0f172a]' style={{ left: '40px', minWidth: '130px' }}><Shield color1={t?.color1} color2={t?.color2} initial={t?.name} size='xs' isFlag={t?.isFlag} /><span className='text-[10px] font-bold uppercase truncate italic max-w-[80px]'>{t?.name}</span></td>
                       <td className='p-3 text-center text-[10px] font-bold sticky z-40 bg-[#0f172a] border-r border-white/10' style={{ left: '170px' }}>{t.p}</td>
                       <td className='p-3 text-center text-[10px] font-bold'>{t.w}</td><td className='p-3 text-center text-[10px] font-bold'>{t.d}</td><td className='p-3 text-center text-[10px] font-bold'>{t.l}</td><td className='p-3 text-center text-[10px] font-bold'>{t.gf}</td><td className='p-3 text-center text-[10px] font-bold'>{t.ga}</td><td className='p-3 text-center text-[10px] font-bold'>{t.gf - t.ga}</td><td className='p-3 text-center text-[10px] font-black text-emerald-400'>{t.pts}</td><td className='p-3'><FormBadges form={standingsView === 'previous' ? [] : getLast5(t.id, currentHistory)} /></td>
@@ -7744,6 +7891,26 @@ function DiceFootballApp() {
 
               </tbody>
             </table>
+            {/* Leyenda de Clasificación / Ascenso / Descenso */}
+            <div className='p-3 bg-slate-900/60 border-t border-white/10 flex flex-wrap items-center gap-4 text-[9px] font-bold text-slate-300'>
+              {!isDiv2 ? (
+                <>
+                  <div className='flex items-center gap-1.5'>
+                    <span className='w-2 h-2 rounded-full bg-blue-400 shadow-[0_0_6px_rgba(96,165,250,0.8)]'></span>
+                    <span>1º al 4º: UEFA Champions League (Fase de Grupos)</span>
+                  </div>
+                  <div className='flex items-center gap-1.5'>
+                    <span className='w-2 h-2 rounded-full bg-rose-500'></span>
+                    <span>16º al 18º: Descenso directo a 2ª División</span>
+                  </div>
+                </>
+              ) : (
+                <div className='flex items-center gap-1.5'>
+                  <span className='w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]'></span>
+                  <span>1º al 3º: Ascenso directo a 1ª División</span>
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <div className='space-y-8'>
@@ -7762,8 +7929,13 @@ function DiceFootballApp() {
                   </thead>
                   <tbody className='divide-y divide-white/5'>
                     {Array.isArray(activeComp.teams) && activeComp.teams.filter(t => Array.isArray(group.teamIds) && group.teamIds.includes(t.id)).sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga)).map((t, i) => (
-                      <tr key={t.id} className={t.id === activeComp.userTeamId ? 'bg-blue-600/30' : ''}>
-                        <td className='p-3 text-[10px] font-black italic text-slate-300 sticky z-40 bg-[#0f172a]' style={{ left: 0 }}>{i+1}</td>
+                      <tr key={t.id} className={t.id === activeComp.userTeamId ? 'bg-blue-600/30' : (i < 2 ? 'bg-emerald-950/20' : '')}>
+                        <td className={'p-3 text-[10px] font-black italic sticky z-40 bg-[#0f172a] ' + (i < 2 ? 'text-emerald-400' : 'text-slate-300')} style={{ left: 0 }}>
+                          <span className='inline-flex items-center gap-1'>
+                            {i+1}
+                            {i < 2 && <span className='w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]' title='Clasifica a Octavos'></span>}
+                          </span>
+                        </td>
                         <td className='p-3 flex items-center gap-2 sticky z-40 bg-[#0f172a]' style={{ left: '40px', minWidth: '130px' }}><Shield color1={t?.color1} color2={t?.color2} initial={t?.name} size='xs' isFlag={t?.isFlag} /><span className='text-[10px] font-bold uppercase truncate italic max-w-[80px]'>{t?.name}</span></td>
                         <td className='p-3 text-center text-[10px] font-bold sticky z-40 bg-[#0f172a] border-r border-white/10' style={{ left: '170px' }}>{t.p}</td>
                         <td className='p-3 text-center text-[10px] font-bold'>{t.w}</td><td className='p-3 text-center text-[10px] font-bold'>{t.d}</td><td className='p-3 text-center text-[10px] font-bold'>{t.l}</td><td className='p-3 text-center text-[10px] font-bold'>{t.gf}</td><td className='p-3 text-center text-[10px] font-bold'>{t.ga}</td><td className='p-3 text-center text-[10px] font-bold'>{t.gf - t.ga}</td><td className='p-3 text-center text-[10px] font-black text-emerald-400'>{t.pts}</td><td className='p-3'><FormBadges form={getLast5(t.id, currentHistory)} /></td>
@@ -7771,6 +7943,10 @@ function DiceFootballApp() {
                     ))}
                   </tbody>
                 </table>
+                <div className='p-2.5 bg-slate-900/60 border-t border-white/10 flex items-center gap-2 text-[8.5px] font-bold text-slate-300'>
+                  <span className='w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]'></span>
+                  <span>1º y 2º clasifican a Octavos de Final</span>
+                </div>
               </div>
             ))}
           </div>
@@ -8300,7 +8476,7 @@ function DiceFootballApp() {
 
       <div className='relative z-10 max-w-md mx-auto min-h-screen flex flex-col'>
         <AnimatePresence mode='wait'>
-          {view === 'hub' && <motion.div key='hub' className='flex-grow flex flex-col' initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><HubView career={career} onOpenCareer={openCareer} setView={setView} setActiveCompId={setActiveCompId} setCompView={setCompView} comps={comps} seasonState={seasonState} pendingLeagueIds={pendingLeagueIds} allLeaguesFinished={allLeaguesFinished} championsFinished={championsFinished} onSimulateLeague={simulateLeagueToGlobal} onSimulateAll={simulateAllPendingLeagues} onNewSeason={startNewGlobalSeason} onSimulateChampions={simulateAllCareerChampions} /></motion.div>}
+          {view === 'hub' && <motion.div key='hub' className='flex-grow flex flex-col' initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><HubView career={career} onOpenCareer={openCareer} setView={setView} setActiveCompId={setActiveCompId} setCompView={setCompView} comps={comps} seasonState={seasonState} pendingLeagueIds={pendingLeagueIds} allLeaguesFinished={allLeaguesFinished} championsFinished={championsFinished} onSimulateLeague={simulateLeagueToGlobal} onSimulateAll={simulateAllPendingLeagues} onNewSeason={startNewGlobalSeason} onSimulateChampions={simulateAllCareerChampions} onSyncPresets={handleSyncAllPresets} /></motion.div>}
           {view === 'rules' && <motion.div key='rules' className='flex-grow flex flex-col' initial={{ x: 300, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -300, opacity: 0 }}><RulesView setView={setView} /></motion.div>}
           {view === 'archive' && <motion.div key='archive' className='flex-grow flex flex-col' initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}><ArchiveView selectedArchiveEntry={selectedArchiveEntry} setSelectedArchiveEntry={setSelectedArchiveEntry} setView={setView} archive={archive} /></motion.div>}
           {view === 'competition' && <motion.div key='comp' className='flex-grow flex flex-col' initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 1.1, opacity: 0 }}><CompetitionView /></motion.div>}
