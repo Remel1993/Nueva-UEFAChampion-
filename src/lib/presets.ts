@@ -59,7 +59,7 @@ export const PRESETS: Record<string, TeamPreset[]> = {
     { name: 'Cremonese', att: 2, opp: 2, def: 4, color1: '#8b0000', color2: '#a9a9a9', league: 'IT' }
   ],
   EN: [
-    { name: 'Manchester City', att: 4, opp: 5, def: 4, color1: '#6caee0', color2: '#ffffff', league: 'EN' },
+    { name: 'Manchester City', att: 5, opp: 5, def: 4, color1: '#6caee0', color2: '#ffffff', league: 'EN' },
     { name: 'Liverpool FC', att: 5, opp: 5, def: 4, color1: '#c8102e', color2: '#f6eb61', league: 'EN' },
     { name: 'Arsenal FC', att: 5, opp: 5, def: 4, color1: '#ef0107', color2: '#ffffff', league: 'EN' },
     { name: 'Aston Villa', att: 4, opp: 4, def: 4, color1: '#95bfe5', color2: '#670e36', league: 'EN' },
@@ -67,7 +67,7 @@ export const PRESETS: Record<string, TeamPreset[]> = {
     { name: 'Newcastle', att: 4, opp: 5, def: 4, color1: '#ffffff', color2: '#000000', league: 'EN' },
     { name: 'Tottenham', att: 4, opp: 5, def: 3, color1: '#ffffff', color2: '#132257', league: 'EN' },
     { name: 'Brighton', att: 3, opp: 5, def: 4, color1: '#0057b8', color2: '#ffffff', league: 'EN' },
-    { name: 'Man United', att: 4, opp: 3, def: 4, color1: '#da291c', color2: '#fbe122', league: 'EN' },
+    { name: 'Man United', att: 5, opp: 3, def: 3, color1: '#da291c', color2: '#fbe122', league: 'EN' },
     { name: 'Nottingham Forest', att: 3, opp: 4, def: 4, color1: '#cb3524', color2: '#ffffff', league: 'EN' },
     { name: 'Bournemouth', att: 4, opp: 4, def: 3, color1: '#cb3524', color2: '#000000', league: 'EN' },
     { name: 'Brentford', att: 4, opp: 3, def: 4, color1: '#cb3524', color2: '#ffffff', league: 'EN' },
@@ -122,7 +122,7 @@ export const PRESETS: Record<string, TeamPreset[]> = {
   ],
   FR: [ 
     { name: 'PSG', att: 5, opp: 5, def: 4, color1: '#004170', color2: '#da291c', league: 'FR' },
-    { name: 'AS Monaco', att: 5, opp: 5, def: 4, color1: '#e30613', color2: '#ffffff', league: 'FR' },
+    { name: 'AS Monaco', att: 4, opp: 5, def: 4, color1: '#e30613', color2: '#ffffff', league: 'FR' },
     { name: 'Marseille', att: 4, opp: 5, def: 4, color1: '#ffffff', color2: '#009dff', league: 'FR' },
     { name: 'Lille OSC', att: 5, opp: 4, def: 4, color1: '#e2001a', color2: '#002654', league: 'FR' },
     { name: 'Olympique Lyon', att: 4, opp: 5, def: 4, color1: '#ffffff', color2: '#da291c', league: 'FR' },
