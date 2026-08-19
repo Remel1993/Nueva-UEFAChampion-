@@ -3232,11 +3232,11 @@ function DiceFootballApp() {
         if (!c) return;
         // Garantizar que ligas con jornadas pendientes (ej. 38 jornadas frente a ligas de 34) queden 100% resueltas antes del nuevo año
         if (!leagueSeasonOver(c)) {
-          const runDivToFinish = (teamsKey: string, mdKey: string, histKey: string, winKey: string) => {
+          const runDivToFinish = (teamsKey: string, mdKey: string, histKey: string, winKey: string, isDiv2?: boolean) => {
             let guard = 0;
             const total = divTotalRounds(c[teamsKey]);
             while ((c[mdKey] || 0) < total && guard++ < 80) {
-              const res = simulateDivisionMatchday(c[teamsKey], c[mdKey] || 0, c[histKey] || []);
+              const res = simulateDivisionMatchday(c[teamsKey], c[mdKey] || 0, c[histKey] || [], id, isDiv2);
               if (!res) break;
               c = {
                 ...c,
@@ -3247,8 +3247,8 @@ function DiceFootballApp() {
               };
             }
           };
-          runDivToFinish('teams', 'matchday', 'history', 'showWinner');
-          runDivToFinish('teams2', 'matchday2', 'history2', 'showWinner2');
+          runDivToFinish('teams', 'matchday', 'history', 'showWinner', false);
+          runDivToFinish('teams2', 'matchday2', 'history2', 'showWinner2', true);
         }
         const r1 = buildSeasonRecord(c.teams, seasonNow);
         const r2 = buildSeasonRecord(c.teams2, seasonNow);
@@ -3403,24 +3403,29 @@ function DiceFootballApp() {
     if (!home || !away) return;
 
     if (career?.active && careerTeam) {
-      const base = {
-        att: Math.max(career.baseDist?.att || 1, careerTeam.att || 1),
-        opp: Math.max(career.baseDist?.opp || 1, careerTeam.opp || 1),
-        def: Math.max(career.baseDist?.def || 1, careerTeam.def || 1)
-      };
-      const injury = career.activeInjury && career.activeInjury.matchday === careerMd ? career.activeInjury : null;
-      let dist = career.tactic ? { ...career.tactic } : { ...base };
-      if (injury) {
-        dist = {
-          ...dist,
-          [injury.attr]: Math.max(1, (dist[injury.attr] || base[injury.attr] || 1) - (injury.penalty || 1))
+      const isCareerHome = (home.name === careerTeam.name) && (activeCompId === career.compId ? (isDiv2Context ? career.div === 2 : career.div === 1) : (activeCompId === 'C1' && (clComp?.careerTeamId === career.teamId || clComp?.teams?.some(t => t.id === home.id && t.name === careerTeam.name))));
+      const isCareerAway = (away.name === careerTeam.name) && (activeCompId === career.compId ? (isDiv2Context ? career.div === 2 : career.div === 1) : (activeCompId === 'C1' && (clComp?.careerTeamId === career.teamId || clComp?.teams?.some(t => t.id === away.id && t.name === careerTeam.name))));
+
+      if (isCareerHome || isCareerAway) {
+        const base = {
+          att: Math.max(career.baseDist?.att || 1, careerTeam.att || 1),
+          opp: Math.max(career.baseDist?.opp || 1, careerTeam.opp || 1),
+          def: Math.max(career.baseDist?.def || 1, careerTeam.def || 1)
         };
-      }
-      if (home.id === career.teamId || home.name === careerTeam.name) {
-        home = { ...home, att: dist.att, opp: dist.opp, def: dist.def };
-      }
-      if (away.id === career.teamId || away.name === careerTeam.name) {
-        away = { ...away, att: dist.att, opp: dist.opp, def: dist.def };
+        const injury = career.activeInjury && career.activeInjury.matchday === careerMd ? career.activeInjury : null;
+        let dist = career.tactic ? { ...career.tactic } : { ...base };
+        if (injury) {
+          dist = {
+            ...dist,
+            [injury.attr]: Math.max(1, (dist[injury.attr] || base[injury.attr] || 1) - (injury.penalty || 1))
+          };
+        }
+        if (isCareerHome) {
+          home = { ...home, att: dist.att, opp: dist.opp, def: dist.def };
+        }
+        if (isCareerAway) {
+          away = { ...away, att: dist.att, opp: dist.opp, def: dist.def };
+        }
       }
     }
 
@@ -3546,7 +3551,7 @@ function DiceFootballApp() {
     return { ...state, oppH: nextOppH, oppA: nextOppA, turn: nextTurn, phase: 'att' };
   };
 
-  const simulateDivisionMatchday = (teams: any[], matchday: number, history: any[]) => {
+  const simulateDivisionMatchday = (teams: any[], matchday: number, history: any[], compId?: string, isDiv2?: boolean) => {
     const schedule = generateLeagueSchedule(teams);
     if (matchday >= schedule.length) return null;
     const currentRound = Array.isArray(schedule) ? schedule[matchday] : [];
@@ -3554,24 +3559,29 @@ function DiceFootballApp() {
       let h = teams.find((t: any) => t.id === m.homeId);
       let a = teams.find((t: any) => t.id === m.awayId);
       if (career?.active && careerTeam) {
-        const base = {
-          att: Math.max(career.baseDist?.att || 1, careerTeam.att || 1),
-          opp: Math.max(career.baseDist?.opp || 1, careerTeam.opp || 1),
-          def: Math.max(career.baseDist?.def || 1, careerTeam.def || 1)
-        };
-        const injury = career.activeInjury && career.activeInjury.matchday === matchday ? career.activeInjury : null;
-        let dist = career.tactic ? { ...career.tactic } : { ...base };
-        if (injury) {
-          dist = {
-            ...dist,
-            [injury.attr]: Math.max(1, (dist[injury.attr] || base[injury.attr] || 1) - (injury.penalty || 1))
+        const isCareerHome = h && (h.name === careerTeam.name) && (compId ? (compId === career.compId && (isDiv2 ? career.div === 2 : career.div === 1)) : (h.id === career.teamId && h.name === careerTeam.name));
+        const isCareerAway = a && (a.name === careerTeam.name) && (compId ? (compId === career.compId && (isDiv2 ? career.div === 2 : career.div === 1)) : (a.id === career.teamId && a.name === careerTeam.name));
+
+        if (isCareerHome || isCareerAway) {
+          const base = {
+            att: Math.max(career.baseDist?.att || 1, careerTeam.att || 1),
+            opp: Math.max(career.baseDist?.opp || 1, careerTeam.opp || 1),
+            def: Math.max(career.baseDist?.def || 1, careerTeam.def || 1)
           };
-        }
-        if (h && (h.id === career.teamId || h.name === careerTeam.name)) {
-          h = { ...h, att: dist.att, opp: dist.opp, def: dist.def };
-        }
-        if (a && (a.id === career.teamId || a.name === careerTeam.name)) {
-          a = { ...a, att: dist.att, opp: dist.opp, def: dist.def };
+          const injury = career.activeInjury && career.activeInjury.matchday === matchday ? career.activeInjury : null;
+          let dist = career.tactic ? { ...career.tactic } : { ...base };
+          if (injury) {
+            dist = {
+              ...dist,
+              [injury.attr]: Math.max(1, (dist[injury.attr] || base[injury.attr] || 1) - (injury.penalty || 1))
+            };
+          }
+          if (isCareerHome && h) {
+            h = { ...h, att: dist.att, opp: dist.opp, def: dist.def };
+          }
+          if (isCareerAway && a) {
+            a = { ...a, att: dist.att, opp: dist.opp, def: dist.def };
+          }
         }
       }
       const { sh, sa } = simMatchGoals(h?.opp, h?.att, a?.def, a?.opp, a?.att, h?.def);
@@ -3604,10 +3614,10 @@ function DiceFootballApp() {
         if (!comp || comp.type !== 'league') return;
         let upd = { ...comp };
         let touched = false;
-        const runDiv = (teamsKey, mdKey, histKey, winKey) => {
+        const runDiv = (teamsKey, mdKey, histKey, winKey, isDiv2?: boolean) => {
           let guard = 0;
           while (divPendingAt(upd[teamsKey], upd[mdKey], globalMatchday) && guard++ < 60) {
-            const res = simulateDivisionMatchday(upd[teamsKey], upd[mdKey] || 0, upd[histKey] || []);
+            const res = simulateDivisionMatchday(upd[teamsKey], upd[mdKey] || 0, upd[histKey] || [], compId, isDiv2);
             if (!res) break;
             touched = true;
             upd = {
@@ -3619,8 +3629,8 @@ function DiceFootballApp() {
             };
           }
         };
-        runDiv('teams', 'matchday', 'history', 'showWinner');
-        runDiv('teams2', 'matchday2', 'history2', 'showWinner2');
+        runDiv('teams', 'matchday', 'history', 'showWinner', false);
+        runDiv('teams2', 'matchday2', 'history2', 'showWinner2', true);
         if (touched) {
           // Al terminar su calendario, la liga guarda una COPIA independiente
           // de su clasificación final.
@@ -4591,11 +4601,11 @@ function DiceFootballApp() {
         if (!comp || comp.type !== 'league') return;
         let upd = { ...comp };
         let touched = false;
-        const runDivToFinish = (teamsKey: string, mdKey: string, histKey: string, winKey: string) => {
+        const runDivToFinish = (teamsKey: string, mdKey: string, histKey: string, winKey: string, isDiv2?: boolean) => {
           let guard = 0;
           const total = divTotalRounds(upd[teamsKey]);
           while ((upd[mdKey] || 0) < total && guard++ < 80) {
-            const res = simulateDivisionMatchday(upd[teamsKey], upd[mdKey] || 0, upd[histKey] || []);
+            const res = simulateDivisionMatchday(upd[teamsKey], upd[mdKey] || 0, upd[histKey] || [], compId, isDiv2);
             if (!res) break;
             touched = true;
             upd = {
@@ -4607,8 +4617,8 @@ function DiceFootballApp() {
             };
           }
         };
-        runDivToFinish('teams', 'matchday', 'history', 'showWinner');
-        runDivToFinish('teams2', 'matchday2', 'history2', 'showWinner2');
+        runDivToFinish('teams', 'matchday', 'history', 'showWinner', false);
+        runDivToFinish('teams2', 'matchday2', 'history2', 'showWinner2', true);
         if (touched) {
           if (leagueSeasonOver(upd)) {
             upd.previousStandings = buildStandingsSnapshot(upd.teams) || upd.previousStandings || null;
@@ -4692,11 +4702,11 @@ function DiceFootballApp() {
         const comp = prev[compId];
         if (!comp || comp.type !== 'league') return;
         let upd = { ...comp };
-        const runDivToFinish = (teamsKey: string, mdKey: string, histKey: string, winKey: string) => {
+        const runDivToFinish = (teamsKey: string, mdKey: string, histKey: string, winKey: string, isDiv2?: boolean) => {
           let guard = 0;
           const total = divTotalRounds(upd[teamsKey]);
           while ((upd[mdKey] || 0) < total && guard++ < 80) {
-            const res = simulateDivisionMatchday(upd[teamsKey], upd[mdKey] || 0, upd[histKey] || []);
+            const res = simulateDivisionMatchday(upd[teamsKey], upd[mdKey] || 0, upd[histKey] || [], compId, isDiv2);
             if (!res) break;
             upd = {
               ...upd,
@@ -4707,8 +4717,8 @@ function DiceFootballApp() {
             };
           }
         };
-        runDivToFinish('teams', 'matchday', 'history', 'showWinner');
-        runDivToFinish('teams2', 'matchday2', 'history2', 'showWinner2');
+        runDivToFinish('teams', 'matchday', 'history', 'showWinner', false);
+        runDivToFinish('teams2', 'matchday2', 'history2', 'showWinner2', true);
 
         if (leagueSeasonOver(upd)) {
           upd.previousStandings = buildStandingsSnapshot(upd.teams) || upd.previousStandings || null;
@@ -5439,11 +5449,11 @@ function DiceFootballApp() {
           const comp = prev[compId];
           if (!comp || comp.type !== 'league') return;
           let upd = { ...comp };
-          const runDivToFinish = (teamsKey: string, mdKey: string, histKey: string, winKey: string) => {
+          const runDivToFinish = (teamsKey: string, mdKey: string, histKey: string, winKey: string, isDiv2?: boolean) => {
             let guard = 0;
             const total = divTotalRounds(upd[teamsKey]);
             while ((upd[mdKey] || 0) < total && guard++ < 80) {
-              const res = simulateDivisionMatchday(upd[teamsKey], upd[mdKey] || 0, upd[histKey] || []);
+              const res = simulateDivisionMatchday(upd[teamsKey], upd[mdKey] || 0, upd[histKey] || [], compId, isDiv2);
               if (!res) break;
               upd = {
                 ...upd,
@@ -5454,8 +5464,8 @@ function DiceFootballApp() {
               };
             }
           };
-          runDivToFinish('teams', 'matchday', 'history', 'showWinner');
-          runDivToFinish('teams2', 'matchday2', 'history2', 'showWinner2');
+          runDivToFinish('teams', 'matchday', 'history', 'showWinner', false);
+          runDivToFinish('teams2', 'matchday2', 'history2', 'showWinner2', true);
 
           if (leagueSeasonOver(upd)) {
             upd.previousStandings = buildStandingsSnapshot(upd.teams) || upd.previousStandings || null;
@@ -6242,7 +6252,7 @@ function DiceFootballApp() {
       const otherNotFinished = otherMatchday < otherSchedule.length;
 
       if (otherTeams && otherTeams.length > 0 && otherNotFinished) {
-        const otherResult = simulateDivisionMatchday(otherTeams, otherMatchday, otherHistory);
+        const otherResult = simulateDivisionMatchday(otherTeams, otherMatchday, otherHistory, activeCompId, !isDiv2Context);
         if (otherResult) {
           if (isDiv2Context) {
             playedDivUpdate.teams = otherResult.updatedTeams;
@@ -6946,7 +6956,8 @@ function DiceFootballApp() {
                                 const homeWon = r.sh > r.sa || (r.penH !== null && r.penH !== undefined && r.penH > r.penA);
                                 const awayWon = r.sa > r.sh || (r.penA !== null && r.penA !== undefined && r.penA > r.penH);
                                 const isTie = r.sh === r.sa && (r.penH === null || r.penH === undefined);
-                                const isUserMatch = r.hId === careerTeam?.id || r.aId === careerTeam?.id || r.hId === activeComp?.careerTeamId || r.aId === activeComp?.careerTeamId || r.hId === activeComp?.userTeamId || r.aId === activeComp?.userTeamId;
+                                const isCareerMatchHere = activeCompId === career.compId ? (r.hId === careerTeam?.id || r.aId === careerTeam?.id) : false;
+                                const isUserMatch = isCareerMatchHere || (activeCompId === 'C1' && (r.hId === activeComp?.careerTeamId || r.aId === activeComp?.careerTeamId)) || r.hId === activeComp?.userTeamId || r.aId === activeComp?.userTeamId;
 
                                 return (
                                   <div
