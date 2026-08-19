@@ -172,13 +172,15 @@ const OBJECTIVES = {
   ],
   2: [
     { from: 1, to: 3, rep: 25, pe: 60, note: 'Ascenso directo a 1ª División (Top 3)', promote: true },
-    { from: 4, to: 10, rep: 5, pe: 20, note: 'Objetivo cumplido' },
-    { from: 11, to: 17, rep: -10, pe: 5, note: 'Temporada decepcionante' },
+    { from: 4, to: 8, rep: 15, pe: 35, note: 'Clasificar a Europa League (Top 8)' },
+    { from: 9, to: 12, rep: 5, pe: 20, note: 'Objetivo cumplido' },
+    { from: 13, to: 17, rep: -10, pe: 5, note: 'Temporada decepcionante' },
     { from: 18, to: 20, rep: -20, pe: 0, note: 'Zona de descenso; despido inminente', riskFire: true }
   ],
   3: [
     { from: 1, to: 4, rep: 20, pe: 50, note: 'Gran temporada (Puestos Champions)', promote: true },
-    { from: 5, to: 12, rep: 5, pe: 20, note: 'Objetivo cumplido' },
+    { from: 5, to: 8, rep: 12, pe: 30, note: 'Clasificar a Europa League (Top 8)' },
+    { from: 9, to: 12, rep: 5, pe: 20, note: 'Objetivo cumplido' },
     { from: 13, to: 17, rep: -15, pe: 0, note: 'Temporada preocupante' },
     { from: 18, to: 20, rep: -25, pe: 0, note: 'Descenso a 2ª División; despido seguro', fire: true }
   ],
@@ -280,7 +282,7 @@ export const getContractObjectivesForTeam = ({
       leaguePriority = 'Muy Alta';
       leagueTargetPos = 4;
     } else if (tTier === 2) {
-      leagueLabel = 'Pelear puestos europeos / Mitad alta (Top 6)';
+      leagueLabel = 'Clasificar a puestos de Europa League (Top 6 o Top 8)';
       leaguePriority = 'Alta';
       leagueTargetPos = 6;
     } else {
@@ -373,9 +375,9 @@ export const seasonObjectives = ({
       posPriority = 'Muy Alta';
       posLabel = 'Clasificar a la UEFA Champions League (Top 4)';
     } else if (tier === 2) {
-      posTarget = Math.max(4, Math.min(8, exp - 1));
+      posTarget = Math.max(6, Math.min(8, exp <= 6 ? 6 : 8));
       posPriority = 'Alta';
-      posLabel = `Pelear puestos europeos / Mitad alta (Top ${posTarget})`;
+      posLabel = `Clasificar a puestos de Europa League (Top ${posTarget})`;
     } else {
       posTarget = Math.min(size - 3, Math.max(12, exp));
       posPriority = 'Crítica';
@@ -916,7 +918,7 @@ export const buildOffers = ({
     } else if (c.div === 1) {
       if (clubPos === 1) standingStatus = '🏆 Lucha por el Título';
       else if (clubPos <= 4) standingStatus = '⭐ Zona Champions';
-      else if (clubPos <= 6) standingStatus = '🌍 Zona Europea';
+      else if (clubPos <= 8) standingStatus = '🟠 Zona Europa League';
       else if (clubPos >= totalTeams - 2) standingStatus = '⚠️ Zona de Descenso';
     } else {
       if (clubPos <= 3) standingStatus = '🚀 Zona de Ascenso';
@@ -930,8 +932,9 @@ export const buildOffers = ({
 
     if (kind !== 'fired') {
       if (c.tier >= 4) requiredObjective = 'Conquistar el título de liga y pelear la Champions';
-      else if (c.tier === 3) requiredObjective = 'Clasificar a competiciones europeas (Top 4)';
-      else if (c.div === 2 || c.tier === 2) requiredObjective = 'Lograr el ascenso directo a 1ª División';
+      else if (c.tier === 3) requiredObjective = 'Clasificar a UEFA Champions League (Top 4)';
+      else if (c.div === 1 && c.tier === 2) requiredObjective = 'Clasificar a puestos de Europa League (Top 6 o Top 8)';
+      else if (c.div === 2) requiredObjective = 'Lograr el ascenso directo a 1ª División';
     }
 
     const contractObjectives = getContractObjectivesForTeam({
@@ -1137,7 +1140,8 @@ export const getMarketVacancies = (comps = {}, career = {}, currentPosition = 9)
 
         let directiveQuote = 'Estabilizar el club';
         if (tier >= 4) directiveQuote = 'Conquistar el título y reinar en Europa';
-        else if (tier === 3) directiveQuote = 'Clasificar a competiciones europeas (Top 4)';
+        else if (tier === 3) directiveQuote = 'Clasificar a UEFA Champions League (Top 4)';
+        else if (div === 1 && tier === 2) directiveQuote = 'Clasificar a puestos de Europa League (Top 6 o Top 8)';
         else if (div === 2 && pos <= 4) directiveQuote = 'Lograr el ascenso directo a 1ª División';
         else if (isStruggling) directiveQuote = 'Estabilizar el club y eludir el descenso';
 
@@ -1149,7 +1153,7 @@ export const getMarketVacancies = (comps = {}, career = {}, currentPosition = 9)
         if (div === 1) {
           if (pos === 1) standingStatus = '🏆 Lucha por el Título';
           else if (pos <= 4) standingStatus = '⭐ Zona Champions';
-          else if (pos <= 6) standingStatus = '🌍 Zona Europea';
+          else if (pos <= 8) standingStatus = '🟠 Zona Europa League';
           else if (pos >= total - 2) standingStatus = '⚠️ Zona de Descenso';
         } else {
           if (pos <= 3) standingStatus = '🚀 Zona de Ascenso';

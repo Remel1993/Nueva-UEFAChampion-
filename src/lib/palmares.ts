@@ -25,7 +25,7 @@ const STORAGE_KEY = 'dice-football-hub-elite-v6_palmares';
 
 const isDuplicate = (existing: TitleEntry, candidate: TitleEntry) => {
   if (candidate.id && existing.id && candidate.id === existing.id) return true;
-  if (candidate.type === 'league' || (!candidate.type && candidate.compId !== 'C1' && candidate.compId !== 'C2')) {
+  if (candidate.type === 'league' || (!candidate.type && candidate.compId !== 'C1' && candidate.compId !== 'C2' && candidate.compId !== 'C3')) {
     return existing.compId === candidate.compId &&
       existing.div === candidate.div &&
       existing.season === candidate.season;
