@@ -6,16 +6,15 @@ import {
   Briefcase, Target, Sparkles, AlertTriangle, AlertOctagon, Trash2, Check, X, Globe, History, Newspaper, Play,
   FileSignature, ShieldCheck, Pencil, CalendarPlus, Dumbbell, Zap, HeartPulse,
   Calendar, Award, ArrowUp, ArrowDown, Minus, CheckCircle, XCircle, ArrowRight, Lock,
-  Plane, Mail, FastForward, SkipForward, Clock, RotateCcw
+  Plane, Mail, FastForward, Clock, RotateCcw
 } from 'lucide-react';
 import {
   TIERS, CLASS_INFO, classOf, tierCaps, tacticalOptions, sameDist, peCostFor,
   repBand, objectiveFor, expectedPosition, readPerformance, seasonObjectives,
-  isSquadMaxed, careerSpells, CONTRACT_SEASONS, CL_SPOTS, signingRepBonus,
+  isSquadMaxed, careerSpells, CONTRACT_SEASONS, CL_SPOTS, getClSpots, signingRepBonus,
   generateRumors, getRejectionReason, getMarketVacancies, SPECIAL_OFFICE_WEEKS,
   getSpecialOfficeWeeks, calculateCurrentSeasonWeek, getContractObjectivesForTeam,
-  calculateBoardConfidence, clPhaseLabel, getChampionsScheduledWeeks,
-  CALENDARIO_TEMPORADA, getClubSeasonCalendar
+  calculateBoardConfidence, clPhaseLabel, getChampionsScheduledWeeks
 } from '../lib/career';
 import { TrainingModal } from './TrainingModal';
 import { TrainingDrillModal } from './TrainingDrillModal';
@@ -123,10 +122,11 @@ const buildNews = ({
       tag: 'Champions',
       text: `${teamName} está en la Champions global${clPhaseLabel ? ` (${clPhaseLabel})` : ''}: Europa marca la temporada.`
     });
-  } else if (division === 1 && position && position <= CL_SPOTS + 2) {
+  } else if (division === 1 && position && position <= getClSpots(career?.compId) + 2) {
+    const clQuota = getClSpots(career?.compId);
     items.push({
       tag: 'Champions',
-      text: `La pelea por las ${CL_SPOTS} plazas de Champions está viva: ${teamName} marcha ${position}º de ${standingsSize || 20}.`
+      text: `La pelea por las ${clQuota} plazas de Champions está viva: ${teamName} marcha ${position}º de ${standingsSize || 20}.`
     });
   }
 
@@ -358,7 +358,7 @@ export const CareerView = ({
   career, team, comp, standings, position, seasonState, nextFixture, rival, isHome,
   divisionFinished, pendingGlobal, worldPending, onBack, onPlayMatch, onSimulateWorld,
   onSimulateGlobalMatchday, onSimulateAllRemainingLeagues,
-  onSetTactic, onSpendPE, onOpenReview, onSimulateMatch, onSimulateToNextMatch, clInfo, onOpenChampions,
+  onSetTactic, onSpendPE, onOpenReview, onSimulateMatch, clInfo, onOpenChampions,
   onRenameManager, reviewDone, contractSigned, allLeaguesFinished, championsFinished, onNewSeason,
   onApplyTrainingStats, onApplyDrillResult, onAcceptOffer, onRejectOffer, onSubmitApplication,
   onAdvanceOfficeWeek, onDecideLaterAppOffer, onRejectAppResolution, onDismissAppResolutionModal,
@@ -498,9 +498,9 @@ export const CareerView = ({
           const hasVuelta = bMatch.sh2 !== null && bMatch.sh2 !== undefined;
           const isVuelta = (entry.competitionLabel || '').includes('Vuelta') || hasVuelta;
 
-          // Totales de goles hId (ida local) y aId (vuelta local)
-          const totHId = (bMatch.sh || 0) + (bMatch.sa2 || 0);
-          const totAId = (bMatch.sa || 0) + (bMatch.sh2 || 0);
+          // Totales de goles bMatch.hId (ida local, vuelta visitante) y bMatch.aId (ida visitante, vuelta local)
+          const totHId = (bMatch.sh || 0) + (bMatch.sh2 || 0);
+          const totAId = (bMatch.sa || 0) + (bMatch.sa2 || 0);
 
           // Alinear el resultado global de cara al escudo mostrado a la izquierda y derecha en este partido
           const globalLeft = isVuelta ? totAId : totHId;
@@ -512,11 +512,18 @@ export const CareerView = ({
             if (totHId > totAId) winnerId = bMatch.hId;
             else if (totAId > totHId) winnerId = bMatch.aId;
             else if (bMatch.penH !== null && bMatch.penH !== undefined) {
-              winnerId = bMatch.penH > bMatch.penA ? bMatch.aId : bMatch.hId;
+              winnerId = (bMatch.penH || 0) > (bMatch.penA || 0) ? bMatch.hId : bMatch.aId;
             }
             if (winnerId !== null) {
               qualified = winnerId === careerClTeam.id;
             }
+          }
+
+          let penaltiesText = null;
+          if (hasVuelta && bMatch.penH !== null && bMatch.penH !== undefined && bMatch.penA !== null && bMatch.penA !== undefined) {
+            const penLeft = isVuelta ? bMatch.penA : bMatch.penH;
+            const penRight = isVuelta ? bMatch.penH : bMatch.penA;
+            penaltiesText = `(${penLeft}-${penRight} pen.)`;
           }
 
           aggregateInfo = {
@@ -525,7 +532,7 @@ export const CareerView = ({
             leg1Score: `${bMatch.sh} - ${bMatch.sa}`,
             leg2Score: hasVuelta ? `${bMatch.sh2} - ${bMatch.sa2}` : null,
             globalScoreText: hasVuelta ? `${globalLeft} - ${globalRight}` : `${bMatch.sh} - ${bMatch.sa}`,
-            penaltiesText: (bMatch.penH !== null && bMatch.penH !== undefined) ? `(${bMatch.penH}-${bMatch.penA} pen.)` : null,
+            penaltiesText,
             qualified
           };
         }
@@ -555,7 +562,7 @@ export const CareerView = ({
     };
   }, [career.seasonLog, comp, clComp, team, career.div]);
 
-  // Calendario Global de la Temporada (42 semanas: Liga + Champions/Europa League + Copa Local + Parones / Mercado)
+  // Calendario Global de la Temporada (Liga Nacional + Champions League + Oficinas / FIFA)
   const calendarMonths = useMemo(() => {
     const allTeams = (career.div === 2 ? comp?.teams2 : comp?.teams) || [];
     const clTeams = clComp?.teams || [];
@@ -636,7 +643,7 @@ export const CareerView = ({
           const rivalTeam = isHome ? at : ht;
           const res = myScore > rivalScore ? 'W' : myScore === rivalScore ? 'D' : 'L';
           userClHistoryMatches.push({
-            dayLabel: h.day,
+            dayLabel: typeof h.day === 'number' ? `Jornada ${h.day}` : String(h.day ?? ''),
             isHome,
             myScore,
             rivalScore,
@@ -679,210 +686,166 @@ export const CareerView = ({
       }
     }
 
+    const leagueOfficeWeeks = getSpecialOfficeWeeks(totalRoundsCount);
     const scheduledClWeeks = getChampionsScheduledWeeks(totalRoundsCount);
-    const userEuropeanComp = isUserInCl ? 'CHAMPIONS' : 'CHAMPIONS';
-    const seasonCalendar = getClubSeasonCalendar(totalRoundsCount, userEuropeanComp);
+    const totalSeasonWeeks = totalRoundsCount + leagueOfficeWeeks.length;
 
-    // Mapear cada semana y fixture
-    const allWeeksMapped: any[] = [];
+    const monthNames = [
+      'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE',
+      'ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO'
+    ];
 
-    seasonCalendar.forEach(semana => {
-      const wNum = semana.weekIndex;
-      const mesName = (semana.mes || 'Agosto').toUpperCase();
+    const allWeeksList: any[] = [];
+    let matchdayCounter = 0;
 
-      semana.fixtures.forEach((fix, fixIdx) => {
-        // Milestone / Evento especial sin partido
-        if (!fix.esPartido) {
-          const isMarket = fix.ronda.toLowerCase().includes('mercado') || fix.id.includes('mercado') || fix.id.includes('pre') || fix.id.includes('financiero');
-          const isFifa = fix.competicion === 'SELECCIONES' || fix.ronda.toLowerCase().includes('selecciones');
-          allWeeksMapped.push({
-            id: fix.id || `sem-${wNum}-${fixIdx}`,
-            weekNum: wNum,
-            mes: mesName,
-            slot: fix.slot,
-            competicion: fix.competicion,
-            type: isMarket ? 'market' : isFifa ? 'international' : 'milestone',
-            title: (fix.title || fix.ronda).toUpperCase(),
-            desc: fix.desc || fix.ronda,
-            isSpecial: true
-          });
-          return;
-        }
+    for (let w = 1; w <= totalSeasonWeeks; w++) {
+      const office = leagueOfficeWeeks.find(o => o.week === w);
+      const clScheduled = scheduledClWeeks.find(c => c.defaultWeek === w);
 
-        // Fixture de Liga
-        if (fix.competicion === 'LIGA') {
-          const matchJ = fix.ronda.match(/Jornada\s*(\d+)/i);
-          const currentMd = matchJ ? parseInt(matchJ[1], 10) : wNum;
-          const fixture = teamFixtures.find(f => f.matchday === currentMd) || {
-            matchday: currentMd,
-            isHome: currentMd % 2 === 1,
-            rival: { name: `Rival J${currentMd}`, color1: '#334155', color2: '#1e293b' },
-            played: false,
-            result: null
-          };
+      if (office) {
+        allWeeksList.push({
+          weekNum: w,
+          type: office.isMarket ? 'market' : 'international',
+          title: office.title.toUpperCase(),
+          isSpecial: true,
+          desc: office.desc
+        });
+      } else {
+        matchdayCounter++;
+        const currentMd = matchdayCounter;
+        const fixture = teamFixtures.find(f => f.matchday === currentMd) || {
+          matchday: currentMd,
+          isHome: currentMd % 2 === 1,
+          rival: { name: `Rival J${currentMd}`, color1: '#334155', color2: '#1e293b' },
+          played: false,
+          result: null
+        };
 
-          allWeeksMapped.push({
-            id: fix.id || `liga-${wNum}-${currentMd}`,
-            weekNum: wNum,
-            mes: mesName,
-            slot: fix.slot,
-            competicion: 'LIGA',
-            ronda: fix.ronda,
-            type: 'match',
-            isSpecial: false,
-            isChampions: false,
-            ...fixture
-          });
-          return;
-        }
+        allWeeksList.push({
+          weekNum: w,
+          type: 'match',
+          isSpecial: false,
+          isChampions: false,
+          ...fixture
+        });
+      }
 
-        // Fixture de Champions League
-        if (fix.competicion === 'CHAMPIONS') {
-          const clSched = scheduledClWeeks.find(c => c.defaultWeek === wNum) || { clRoundIdx: 0, shortLabel: 'UCL', label: fix.ronda };
-          const roundIdx = clSched.clRoundIdx;
-          let isPlayed = false;
-          let isEliminated = false;
-          let isProbable = false;
-          let result = null;
-          let scoreText = null;
-          let clRival: any = null;
-          let isHome = roundIdx % 2 === 0;
+      // Si coincide con semana continental de Champions League
+      if (clScheduled && isUserInCl) {
+        const roundIdx = clScheduled.clRoundIdx;
+        let isPlayed = false;
+        let isEliminated = false;
+        let isProbable = false;
+        let result = null;
+        let scoreText = null;
+        let clRival: any = null;
+        let isHome = roundIdx % 2 === 0;
 
-          if (roundIdx < 6) {
+        if (roundIdx < 6) {
+          // Fase de grupos (jornadas 0 a 5)
+          const playedMatch = userClHistoryMatches[roundIdx] || clLogList[roundIdx];
+          if (playedMatch) {
+            isPlayed = true;
+            result = playedMatch.result;
+            scoreText = `${playedMatch.myScore ?? playedMatch.gf} - ${playedMatch.rivalScore ?? playedMatch.ga}`;
+            clRival = playedMatch.rivalTeam || (clTeams.find((t: any) => t.name === playedMatch.rival)) || { name: 'Rival Champions', color1: '#1e3a8a', color2: '#3b82f6' };
+          } else {
+            // No jugado todavía en grupos
+            const userGroup = (clComp?.groups || []).find((g: any) => g.teamIds?.includes(careerClTeam?.id));
+            if (userGroup) {
+              const rivalsInGroup = clTeams.filter((t: any) => userGroup.teamIds?.includes(t.id) && t.id !== careerClTeam?.id);
+              if (rivalsInGroup.length > 0) {
+                clRival = rivalsInGroup[roundIdx % rivalsInGroup.length];
+              }
+            }
+            if (!clRival) {
+              clRival = { name: 'Rival de Grupo', color1: '#1e3a8a', color2: '#3b82f6' };
+            }
+          }
+        } else {
+          // Rondas eliminatorias (Octavos: 6-7, Cuartos: 8-9, Semis: 10-11, Final: 12)
+          if (clEliminatedPhase) {
+            const elimAtGroup = clEliminatedPhase === 'Fase de Grupos';
+            const elimAtOctavos = clEliminatedPhase === 'Octavos de Final';
+            const elimAtCuartos = clEliminatedPhase === 'Cuartos de Final';
+            const elimAtSemis = clEliminatedPhase === 'Semifinales';
+
+            if (elimAtGroup || (elimAtOctavos && roundIdx >= 8) || (elimAtCuartos && roundIdx >= 10) || (elimAtSemis && roundIdx >= 12)) {
+              isEliminated = true;
+            }
+          }
+
+          if (!isEliminated) {
             const playedMatch = userClHistoryMatches[roundIdx] || clLogList[roundIdx];
             if (playedMatch) {
               isPlayed = true;
               result = playedMatch.result;
               scoreText = `${playedMatch.myScore ?? playedMatch.gf} - ${playedMatch.rivalScore ?? playedMatch.ga}`;
-              clRival = playedMatch.rivalTeam || (clTeams.find((t: any) => t.name === playedMatch.rival)) || { name: 'Rival Champions', color1: '#1e3a8a', color2: '#3b82f6' };
+              clRival = playedMatch.rivalTeam || (clTeams.find((t: any) => t.name === playedMatch.rival)) || { name: 'Rival Eliminatoria', color1: '#1e3a8a', color2: '#3b82f6' };
             } else {
-              const userGroup = (clComp?.groups || []).find((g: any) => g.teamIds?.includes(careerClTeam?.id));
-              if (userGroup) {
-                const rivalsInGroup = clTeams.filter((t: any) => userGroup.teamIds?.includes(t.id) && t.id !== careerClTeam?.id);
-                if (rivalsInGroup.length > 0) {
-                  clRival = rivalsInGroup[roundIdx % rivalsInGroup.length];
+              let isCurrentPhase = false;
+              if (roundIdx === 6 || roundIdx === 7) isCurrentPhase = clComp?.phase === 'Octavos';
+              else if (roundIdx === 8 || roundIdx === 9) isCurrentPhase = clComp?.phase === 'Cuartos';
+              else if (roundIdx === 10 || roundIdx === 11) isCurrentPhase = clComp?.phase === 'Semis';
+              else if (roundIdx === 12) isCurrentPhase = clComp?.phase === 'Final';
+
+              if (isCurrentPhase && clComp?.bracket) {
+                const bracketPhase = clComp.bracket[clComp.phase];
+                const matches = Array.isArray(bracketPhase) ? bracketPhase : [bracketPhase].filter(Boolean);
+                const matchInBracket = matches.find((m: any) => m && (m.hId === careerClTeam?.id || m.aId === careerClTeam?.id));
+                if (matchInBracket) {
+                  const isVuelta = (roundIdx === 7 || roundIdx === 9 || roundIdx === 11);
+                  const isH = isVuelta ? matchInBracket.aId === careerClTeam?.id : matchInBracket.hId === careerClTeam?.id;
+                  const rId = isH ? matchInBracket.aId : matchInBracket.hId;
+                  isHome = isH;
+                  clRival = clTeams.find((t: any) => t.id === rId) || { name: 'Rival Europeo', color1: '#1e3a8a', color2: '#3b82f6' };
                 }
               }
+
               if (!clRival) {
-                clRival = { name: 'Rival de Grupo', color1: '#1e3a8a', color2: '#3b82f6' };
-              }
-            }
-          } else {
-            if (clEliminatedPhase) {
-              const elimAtGroup = clEliminatedPhase === 'Fase de Grupos';
-              const elimAtOctavos = clEliminatedPhase === 'Octavos de Final';
-              const elimAtCuartos = clEliminatedPhase === 'Cuartos de Final';
-              const elimAtSemis = clEliminatedPhase === 'Semifinales';
-
-              if (elimAtGroup || (elimAtOctavos && roundIdx >= 8) || (elimAtCuartos && roundIdx >= 10) || (elimAtSemis && roundIdx >= 12)) {
-                isEliminated = true;
-              }
-            }
-
-            if (!isEliminated) {
-              const playedMatch = userClHistoryMatches[roundIdx] || clLogList[roundIdx];
-              if (playedMatch) {
-                isPlayed = true;
-                result = playedMatch.result;
-                scoreText = `${playedMatch.myScore ?? playedMatch.gf} - ${playedMatch.rivalScore ?? playedMatch.ga}`;
-                clRival = playedMatch.rivalTeam || (clTeams.find((t: any) => t.name === playedMatch.rival)) || { name: 'Rival Eliminatoria', color1: '#1e3a8a', color2: '#3b82f6' };
-              } else {
-                let isCurrentPhase = false;
-                if (roundIdx === 6 || roundIdx === 7) isCurrentPhase = clComp?.phase === 'Octavos';
-                else if (roundIdx === 8 || roundIdx === 9) isCurrentPhase = clComp?.phase === 'Cuartos';
-                else if (roundIdx === 10 || roundIdx === 11) isCurrentPhase = clComp?.phase === 'Semis';
-                else if (roundIdx === 12) isCurrentPhase = clComp?.phase === 'Final';
-
-                if (isCurrentPhase && clComp?.bracket) {
-                  const bracketPhase = clComp.bracket[clComp.phase];
-                  const matches = Array.isArray(bracketPhase) ? bracketPhase : [bracketPhase].filter(Boolean);
-                  const matchInBracket = matches.find((m: any) => m && (m.hId === careerClTeam?.id || m.aId === careerClTeam?.id));
-                  if (matchInBracket) {
-                    const isVuelta = (roundIdx === 7 || roundIdx === 9 || roundIdx === 11);
-                    const isH = isVuelta ? matchInBracket.aId === careerClTeam?.id : matchInBracket.hId === careerClTeam?.id;
-                    const rId = isH ? matchInBracket.aId : matchInBracket.hId;
-                    isHome = isH;
-                    clRival = clTeams.find((t: any) => t.id === rId) || { name: 'Rival Europeo', color1: '#1e3a8a', color2: '#3b82f6' };
-                  }
-                }
-
-                if (!clRival) {
-                  isProbable = true;
-                  clRival = { name: 'Por Determinar (según cuadro)', color1: '#1e3a8a', color2: '#3b82f6' };
-                }
+                isProbable = true;
+                clRival = { name: 'Por Determinar (según cuadro)', color1: '#1e3a8a', color2: '#3b82f6' };
               }
             }
           }
-
-          allWeeksMapped.push({
-            id: fix.id || `ucl-${wNum}-${roundIdx}`,
-            weekNum: wNum,
-            mes: mesName,
-            slot: fix.slot,
-            competicion: 'CHAMPIONS',
-            type: 'match',
-            isSpecial: false,
-            isChampions: true,
-            clPhaseLabel: fix.ronda,
-            shortLabel: clSched.shortLabel || 'Champions',
-            matchday: `UCL-${roundIdx + 1}`,
-            isHome,
-            rival: clRival || { name: 'Rival Champions', color1: '#1e3a8a', color2: '#3b82f6' },
-            played: isPlayed,
-            isEliminated,
-            isProbable,
-            eliminatedPhase: clEliminatedPhase,
-            result,
-            scoreText,
-            repEarned: isPlayed ? (result === 'W' ? 0.8 : result === 'D' ? 0.3 : -0.1) : null,
-            peEarned: isPlayed ? (result === 'W' ? 3 : result === 'D' ? 2 : 0) : null
-          });
-          return;
         }
 
-        // Fixture de Copa Local o Europa League
-        if (fix.competicion === 'COPA_LOCAL' || fix.competicion === 'EUROPA_LEAGUE') {
-          allWeeksMapped.push({
-            id: fix.id || `cup-${wNum}-${fixIdx}`,
-            weekNum: wNum,
-            mes: mesName,
-            slot: fix.slot,
-            competicion: fix.competicion,
-            type: 'match',
-            isSpecial: false,
-            isChampions: fix.competicion === 'EUROPA_LEAGUE',
-            isCopa: fix.competicion === 'COPA_LOCAL',
-            shortLabel: fix.competicion === 'COPA_LOCAL' ? 'Copa Local' : 'Europa League',
-            ronda: fix.ronda,
-            title: fix.title || fix.ronda,
-            matchday: fix.ronda,
-            isHome: true,
-            rival: { name: fix.competicion === 'COPA_LOCAL' ? 'Rival Copa Local' : 'Rival Europa League', color1: '#475569', color2: '#334155' },
-            played: false,
-            isProbable: true,
-            result: null
-          });
-          return;
-        }
-      });
-    });
-
-    // Agrupar por mes en orden cronológico
-    const monthOrder = [
-      'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE',
-      'ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO'
-    ];
-
-    const monthsResult: any[] = [];
-    monthOrder.forEach(mName => {
-      const itemsInMonth = allWeeksMapped.filter(item => item.mes === mName);
-      if (itemsInMonth.length > 0) {
-        monthsResult.push({
-          monthName: mName,
-          items: itemsInMonth
+        allWeeksList.push({
+          weekNum: w,
+          type: 'match',
+          isSpecial: false,
+          isChampions: true,
+          clPhaseLabel: clScheduled.label,
+          shortLabel: clScheduled.shortLabel,
+          matchday: `UCL-${roundIdx + 1}`,
+          isHome,
+          rival: clRival || { name: 'Rival Champions', color1: '#1e3a8a', color2: '#3b82f6' },
+          played: isPlayed,
+          isEliminated,
+          isProbable,
+          eliminatedPhase: clEliminatedPhase,
+          result,
+          scoreText,
+          repEarned: isPlayed ? (result === 'W' ? 0.8 : result === 'D' ? 0.3 : -0.1) : null,
+          peEarned: isPlayed ? (result === 'W' ? 3 : result === 'D' ? 2 : 0) : null
         });
       }
-    });
+    }
+
+    const monthsResult: any[] = [];
+    let currentWeekIdx = 0;
+    for (let m = 0; m < monthNames.length; m++) {
+      const isLast = m === monthNames.length - 1;
+      const weeksForThisMonth = isLast ? Math.max(1, allWeeksList.length - currentWeekIdx) : Math.ceil(allWeeksList.length / monthNames.length);
+      const monthWeeks = allWeeksList.slice(currentWeekIdx, currentWeekIdx + weeksForThisMonth);
+      currentWeekIdx += weeksForThisMonth;
+      if (monthWeeks.length > 0) {
+        monthsResult.push({
+          monthName: monthNames[m],
+          items: monthWeeks
+        });
+      }
+    }
 
     return monthsResult;
   }, [schedule, comp, clComp, career.div, career.teamId, career.seasonLog, totalRoundsCount, isClQualified, team]);
@@ -1315,21 +1278,16 @@ export const CareerView = ({
                           </span>
                         )}
                       </div>
-                      {lastPlayedMatchOverall.aggregateInfo.qualified !== null && (
-                        <span className={`px-2.5 py-1 rounded-full font-black uppercase tracking-wider text-[8px] ${
-                          lastPlayedMatchOverall.aggregateInfo.qualified
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                            : 'bg-red-500/20 text-red-300 border border-red-500/30'
-                        }`}>
-                          {lastPlayedMatchOverall.aggregateInfo.qualified ? '✅ ¡Clasificado a siguiente ronda!' : '❌ Eliminado en esta ronda'}
-                        </span>
-                      )}
                     </div>
                   )}
 
                   <div className='flex items-center justify-between text-[8px] font-bold text-slate-400 px-1'>
-                    <span>Balance: +{lastPlayedMatchOverall.pe || 0} PE ganados</span>
-                    <span className='text-amber-400 font-black'>+{lastPlayedMatchOverall.rep || 0} Reputación</span>
+                    <span className='flex items-center gap-1'>
+                      Balance: <strong className={(lastPlayedMatchOverall.pe || 0) > 0 ? 'text-emerald-400 font-black' : 'text-slate-400 font-bold'}>+{(lastPlayedMatchOverall.pe || 0)} PE ganados</strong>
+                    </span>
+                    <span className={(lastPlayedMatchOverall.rep || 0) > 0 ? 'text-emerald-400 font-black' : (lastPlayedMatchOverall.rep || 0) < 0 ? 'text-rose-400 font-black' : 'text-slate-400 font-bold'}>
+                      {(lastPlayedMatchOverall.rep || 0) > 0 ? `+${lastPlayedMatchOverall.rep}` : (lastPlayedMatchOverall.rep || 0)} Reputación
+                    </span>
                   </div>
                 </div>
               )}
@@ -1353,7 +1311,7 @@ export const CareerView = ({
                     </p>
                   </div>
 
-                  {/* Panel de sincronización de Temporada Global si otras ligas europeas aún tienen semanas/jornadas pendientes */}
+                  {/* Panel de sincronización de Temporada Global si otras ligas europeas aún tienen jornadas pendientes */}
                   {!allLeaguesFinished && (
                     <div className='p-4 bg-slate-950/60 rounded-2xl border border-amber-500/30 space-y-3 text-left shadow-inner'>
                       <div className='flex items-center justify-between'>
@@ -1363,7 +1321,7 @@ export const CareerView = ({
                           </div>
                           <div>
                             <p className='text-[9px] font-black uppercase tracking-widest text-emerald-400'>
-                              Temporada Global · Semana {currentGlobalMd} de {maxLeagueRounds}
+                              Temporada Global · Jornada {currentGlobalMd} de {maxLeagueRounds}
                             </p>
                             <p className='text-[10px] font-bold text-slate-200'>
                               Otras ligas europeas continúan en juego
@@ -1371,18 +1329,18 @@ export const CareerView = ({
                           </div>
                         </div>
                         <span className='px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[8px] font-black uppercase tracking-wider shrink-0'>
-                          {remainingGlobalMatchdays} Sem. restantes
+                          {remainingGlobalMatchdays} J. restantes
                         </span>
                       </div>
                       <p className='text-[9px] font-bold text-slate-300 leading-snug'>
-                        Tu liga ha completado sus {totalRoundsCount} jornadas. Puedes simular el resto de ligas europeas semana a semana o completarlas todas de golpe para definir clasificaciones, ascensos y clasificados a Champions.
+                        Tu liga ha completado sus {totalRoundsCount} jornadas. Puedes simular el resto de ligas europeas jornada a jornada o completarlas todas de golpe para definir clasificaciones, ascensos y clasificados a Champions.
                       </p>
                       <div className='grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1'>
                         <button
                           onClick={onSimulateGlobalMatchday || onSimulateWorld}
                           className='w-full bg-slate-800/50 hover:bg-slate-700/60 backdrop-blur-md text-slate-200 py-3 rounded-xl text-[9px] font-black uppercase italic tracking-widest active:scale-95 transition-all flex items-center justify-center gap-1.5 border border-white/10'
                         >
-                          <Dices size={14} className='text-slate-300' /> Simular Semana Global {currentGlobalMd}
+                          <Dices size={14} className='text-slate-300' /> Simular Jornada Global {currentGlobalMd}
                         </button>
                         <button
                           onClick={onSimulateAllRemainingLeagues}
@@ -1445,8 +1403,8 @@ export const CareerView = ({
                       </button>
                     )}
 
-                    {/* Botón para iniciar nueva temporada global si Champions y Ligas están listas, o tras finalizar la Champions */}
-                    {(championsFinished || allLeaguesFinished) && onNewSeason && (
+                    {/* Botón para iniciar nueva temporada global cuando Champions League ha finalizado */}
+                    {championsFinished && onNewSeason && (
                       <button
                         onClick={onNewSeason}
                         className='w-full bg-amber-500 hover:bg-amber-400 text-slate-950 py-3.5 rounded-2xl text-[10px] font-black uppercase italic tracking-widest shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 border border-amber-300/60'
@@ -1661,30 +1619,19 @@ export const CareerView = ({
                     </div>
                   </div>
 
-                  <div className='space-y-2 mt-4'>
-                    <div className='grid grid-cols-2 gap-2'>
-                      <button
-                        onClick={onPlayMatch}
-                        className='bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-400 hover:to-green-500 text-slate-950 py-3.5 rounded-2xl text-[10px] font-black uppercase italic tracking-widest shadow-xl active:scale-95 transition-all flex items-center justify-center gap-1.5'
-                      >
-                        <Swords size={15} /> Jugar Partido
-                      </button>
-                      <button
-                        onClick={onSimulateMatch}
-                        className='bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white py-3.5 rounded-2xl text-[10px] font-black uppercase italic tracking-widest shadow-xl active:scale-95 transition-all flex items-center justify-center gap-1.5 border border-blue-400/30'
-                      >
-                        <FastForward size={15} /> Simular Semana
-                      </button>
-                    </div>
-
-                    {onSimulateToNextMatch && (
-                      <button
-                        onClick={onSimulateToNextMatch}
-                        className='w-full bg-slate-800/60 hover:bg-slate-700/70 border border-white/10 text-slate-300 hover:text-white py-2.5 rounded-xl text-[9px] font-black uppercase italic tracking-wider transition-all flex items-center justify-center gap-1.5 active:scale-95'
-                      >
-                        <SkipForward size={13} className='text-amber-400' /> Simular hasta mi próximo partido
-                      </button>
-                    )}
+                  <div className='grid grid-cols-2 gap-2 mt-4'>
+                    <button
+                      onClick={onPlayMatch}
+                      className='bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-400 hover:to-green-500 text-slate-950 py-3.5 rounded-2xl text-[10px] font-black uppercase italic tracking-widest shadow-xl active:scale-95 transition-all flex items-center justify-center gap-1.5'
+                    >
+                      <Swords size={15} /> Jugar Partido
+                    </button>
+                    <button
+                      onClick={onSimulateMatch}
+                      className='bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white py-3.5 rounded-2xl text-[10px] font-black uppercase italic tracking-widest shadow-xl active:scale-95 transition-all flex items-center justify-center gap-1.5 border border-blue-400/30'
+                    >
+                      <FastForward size={15} /> Simular Jornada
+                    </button>
                   </div>
                 </Panel>
               ) : null}
@@ -2417,7 +2364,9 @@ export const CareerView = ({
 
                               {item.played && (
                                 <div className='pt-1.5 border-t border-white/5 flex items-center justify-between text-[8px] font-bold'>
-                                  <span className='text-amber-300'>+{item.repEarned || 0} Rep</span>
+                                  <span className={(item.repEarned || 0) > 0 ? 'text-emerald-400 font-black' : (item.repEarned || 0) < 0 ? 'text-rose-400 font-black' : 'text-slate-400 font-bold'}>
+                                    {(item.repEarned || 0) > 0 ? `+${item.repEarned}` : (item.repEarned || 0)} Rep
+                                  </span>
                                   <span className='text-emerald-300'>+{item.peEarned || 0} PE</span>
                                 </div>
                               )}
@@ -3394,8 +3343,12 @@ export const CareerMatchView = ({ matchState, rolling, onRoll, onFinish, ui }) =
           }`}>
             {isChampions ? '⭐ UEFA Champions League' : 'En Directo'}
           </div>
-          <span className='text-[8px] font-black uppercase italic text-slate-300 tracking-wider'>
-            {isChampions ? (matchState.championsPhase ? clPhaseLabel(matchState.championsPhase) : 'Noche Europea') : 'Jornada de Liga'}
+          <span className='text-[8px] font-black uppercase italic text-slate-300 tracking-wider flex items-center gap-1.5'>
+            {isChampions
+              ? `${matchState.championsPhase ? clPhaseLabel(matchState.championsPhase) : 'Noche Europea'}${
+                  matchState.isVuelta ? ' · Partido de Vuelta' : matchState.championsPhase === 'Final' ? ' · Gran Final' : ' · Partido de Ida'
+                }`
+              : 'Jornada de Liga'}
           </span>
         </div>
         <div className='w-10' />
@@ -3414,7 +3367,17 @@ export const CareerMatchView = ({ matchState, rolling, onRoll, onFinish, ui }) =
             <p className='text-[8px] font-bold text-slate-300 mt-1 bg-black/40 backdrop-blur-sm inline-block px-2 rounded'>{matchState.home.att + '/' + matchState.home.opp + '/' + matchState.home.def}</p>
           </div>
 
-          <div className='px-4 flex flex-col items-center shrink-0 w-32'>
+          <div className='px-4 flex flex-col items-center shrink-0 min-w-[140px]'>
+            {matchState.aggregate && (
+              <div className='mb-2 bg-gradient-to-r from-blue-600/50 via-indigo-600/60 to-blue-600/50 border border-blue-400/50 px-3 py-1 rounded-full flex flex-col items-center shadow-lg'>
+                <span className='text-[9px] font-black uppercase italic text-amber-300 tracking-wider whitespace-nowrap'>
+                  Global: {matchState.aggregate.sh + matchState.scoreH} - {matchState.aggregate.sa + matchState.scoreA}
+                </span>
+                <span className='text-[7px] text-blue-200 font-bold tracking-tight'>
+                  (Ida: {matchState.aggregate.sh} - {matchState.aggregate.sa})
+                </span>
+              </div>
+            )}
             <div className='text-5xl font-black italic tracking-tighter flex gap-3 tabular-nums drop-shadow-[0_0_15px_rgba(0,0,0,0.8)] text-white'>
               <span>{matchState.scoreH}</span>
               <span className='text-slate-400'>-</span>
