@@ -427,7 +427,7 @@ export const CareerView = ({
   const isClQualified = useMemo(() => {
     if (clInfo || career.clQualified) return true;
     if (clComp?.teams?.length > 0) {
-      return clComp.teams.some((t: any) => t.name === team?.name || t.id === clComp.careerTeamId || t.name === clComp.careerTeamName);
+      return clComp.teams.some((t: any) => t.id === clComp.careerTeamId || t.name === (clComp.careerTeamName || team?.name));
     }
     return false;
   }, [clInfo, career.clQualified, clComp, team]);
@@ -487,16 +487,12 @@ export const CareerView = ({
       };
 
       // Si fue partido eliminatorio de ida y vuelta en Champions
-      const careerClTeam = clTeams.find((t: any) => t.name === team?.name) ||
-        (clComp?.careerTeamId ? clTeams.find((t: any) => t.id === clComp.careerTeamId) : null) ||
-        (clComp?.careerTeamName ? clTeams.find((t: any) => t.name === clComp.careerTeamName) : null) || null;
+      const careerClTeam = clTeams.find((t: any) => t.id === clComp?.careerTeamId) ||
+        clTeams.find((t: any) => t.name === (clComp?.careerTeamName || team?.name)) || null;
 
       const phaseKey = ['Octavos', 'Cuartos', 'Semis'].find(p => (entry.phase === p || (entry.competitionLabel || '').includes(p)));
       if (phaseKey && clComp?.bracket?.[phaseKey] && careerClTeam) {
-        const rawBracketPhase = clComp.bracket[phaseKey];
-        const bMatches = Array.isArray(rawBracketPhase)
-          ? rawBracketPhase
-          : (rawBracketPhase && typeof rawBracketPhase === 'object' ? [rawBracketPhase] : []);
+        const bMatches = Array.isArray(clComp.bracket[phaseKey]) ? clComp.bracket[phaseKey] : [clComp.bracket[phaseKey]];
         const bMatch = bMatches.find((bm: any) => bm && (bm.hId === careerClTeam.id || bm.aId === careerClTeam.id));
         if (bMatch && bMatch.sh !== null) {
           const hasVuelta = bMatch.sh2 !== null && bMatch.sh2 !== undefined;
@@ -628,9 +624,8 @@ export const CareerView = ({
     }
 
     // Identificar el equipo del modo carrera en Champions (C1)
-    const careerClTeam = clTeams.find((t: any) => t.name === team?.name) ||
-      (clComp?.careerTeamId ? clTeams.find((t: any) => t.id === clComp.careerTeamId) : null) ||
-      (clComp?.careerTeamName ? clTeams.find((t: any) => t.name === clComp.careerTeamName) : null) || null;
+    const careerClTeam = clTeams.find((t: any) => t.id === clComp?.careerTeamId) ||
+      clTeams.find((t: any) => t.name === (clComp?.careerTeamName || team?.name)) || null;
     const isUserInCl = isClQualified || !!careerClTeam;
 
     // Buscar historial cronológico de partidos de Champions jugados por el usuario
@@ -638,7 +633,7 @@ export const CareerView = ({
     if (Array.isArray(clComp?.history) && careerClTeam) {
       const chronologicalHistory = [...clComp.history].reverse();
       chronologicalHistory.forEach((h: any) => {
-        const m = (h.results || []).find((r: any) => r && (r.hId === careerClTeam.id || r.aId === careerClTeam.id));
+        const m = (h.results || []).find((r: any) => r.hId === careerClTeam.id || r.aId === careerClTeam.id);
         if (m) {
           const ht = clTeams.find((t: any) => t.id === m.hId);
           const at = clTeams.find((t: any) => t.id === m.aId);
@@ -675,26 +670,16 @@ export const CareerView = ({
           }
         }
         if (!clEliminatedPhase && clComp.bracket) {
-          const cuartosMatches = Array.isArray(clComp.bracket.Cuartos)
-            ? clComp.bracket.Cuartos
-            : (clComp.bracket.Cuartos && typeof clComp.bracket.Cuartos === 'object' ? [clComp.bracket.Cuartos] : []);
-          const semisMatches = Array.isArray(clComp.bracket.Semis)
-            ? clComp.bracket.Semis
-            : (clComp.bracket.Semis && typeof clComp.bracket.Semis === 'object' ? [clComp.bracket.Semis] : []);
-          const finalMatches = Array.isArray(clComp.bracket.Final)
-            ? clComp.bracket.Final
-            : (clComp.bracket.Final && typeof clComp.bracket.Final === 'object' ? [clComp.bracket.Final] : []);
-
           if (clComp.phase === 'Cuartos' || clComp.phase === 'Semis' || clComp.phase === 'Final' || clComp.phase === 'Terminado') {
-            const inCuartos = cuartosMatches.some((m: any) => m && (m.hId === careerClTeam.id || m.aId === careerClTeam.id));
+            const inCuartos = (clComp.bracket.Cuartos || []).some((m: any) => m && (m.hId === careerClTeam.id || m.aId === careerClTeam.id));
             if (!inCuartos) clEliminatedPhase = 'Octavos de Final';
           }
           if (!clEliminatedPhase && (clComp.phase === 'Semis' || clComp.phase === 'Final' || clComp.phase === 'Terminado')) {
-            const inSemis = semisMatches.some((m: any) => m && (m.hId === careerClTeam.id || m.aId === careerClTeam.id));
+            const inSemis = (clComp.bracket.Semis || []).some((m: any) => m && (m.hId === careerClTeam.id || m.aId === careerClTeam.id));
             if (!inSemis) clEliminatedPhase = 'Cuartos de Final';
           }
           if (!clEliminatedPhase && (clComp.phase === 'Final' || clComp.phase === 'Terminado')) {
-            const inFinal = finalMatches.some((m: any) => m && (m.hId === careerClTeam.id || m.aId === careerClTeam.id));
+            const inFinal = (clComp.bracket.Final || []).some((m: any) => m && (m.hId === careerClTeam.id || m.aId === careerClTeam.id));
             if (!inFinal) clEliminatedPhase = 'Semifinales';
           }
         }
