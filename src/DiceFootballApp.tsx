@@ -810,220 +810,6 @@ const generateLeagueSchedule = (teams, twoLegged = true) => {
   return rounds;
 };
 
-// Simula N jornadas/rondas de una copa de forma pura e inmutable
-const simulateCompSteps = (comp: any, cId: string = 'C1', steps: number = 1) => {
-  if (!comp || comp.type === 'league' || comp.phase === 'Terminado' || comp.showWinner) return comp;
-  let nextComp = JSON.parse(JSON.stringify(comp));
-  const isTwoLegged = (cId === 'C1' || cId === 'C3' || nextComp.name?.includes('Champions') || nextComp.name?.includes('Europa')) && cId !== 'C2' && !nextComp.name?.includes('Mundial') && !nextComp.name?.includes('World');
-  const isWorldCup = cId === 'C2' || nextComp.name?.includes('Mundial') || nextComp.name?.includes('World');
-
-  for (let s = 0; s < steps; s++) {
-    if (nextComp.phase === 'Terminado' || nextComp.showWinner) break;
-
-    if (nextComp.phase === 'groups') {
-      const maxMatchdays = isWorldCup ? 3 : 6;
-      const results: any[] = [];
-      (nextComp.groups || []).forEach((group: any) => {
-        const groupTeams = (nextComp.teams || []).filter((t: any) => group.teamIds?.includes(t.id));
-        const schedule = generateLeagueSchedule(groupTeams, !isWorldCup);
-        const currentRound = schedule[(nextComp.matchday || 0) % maxMatchdays];
-        if (currentRound) {
-          currentRound.forEach((m: any) => {
-            const h = (nextComp.teams || []).find((t: any) => t.id === m.homeId);
-            const a = (nextComp.teams || []).find((t: any) => t.id === m.awayId);
-            const { sh, sa } = simMatchGoals(h?.opp, h?.att, a?.def, a?.opp, a?.att, h?.def);
-            results.push({ hId: m.homeId, aId: m.awayId, sh, sa, penH: null, penA: null });
-          });
-        }
-      });
-
-      const updatedTeams = (nextComp.teams || []).map((t: any) => {
-        const res = results.find(r => r.hId === t.id || r.aId === t.id);
-        if (!res) return t;
-        const isHome = res.hId === t.id;
-        const gf = isHome ? res.sh : res.sa;
-        const ga = isHome ? res.sa : res.sh;
-        const w = gf > ga ? 1 : 0;
-        const d = gf === ga ? 1 : 0;
-        const l = gf < ga ? 1 : 0;
-        return {
-          ...t,
-          p: (t.p || 0) + 1,
-          w: (t.w || 0) + w,
-          d: (t.d || 0) + d,
-          l: (t.l || 0) + l,
-          gf: (t.gf || 0) + gf,
-          ga: (t.ga || 0) + ga,
-          pts: (t.pts || 0) + (w * 3 + d)
-        };
-      });
-
-      const nextMatchday = (nextComp.matchday || 0) + 1;
-      const isEndOfGroups = nextMatchday >= maxMatchdays;
-      let newBracket = nextComp.bracket;
-      if (isEndOfGroups) {
-        newBracket = generateKnockoutBrackets({ ...nextComp, teams: updatedTeams });
-      }
-
-      nextComp = {
-        ...nextComp,
-        teams: updatedTeams,
-        history: [{ day: 'Jornada ' + nextMatchday, results }, ...(nextComp.history || [])],
-        matchday: nextMatchday,
-        phase: isEndOfGroups ? (newBracket?.Octavos ? 'Octavos' : 'Cuartos') : 'groups',
-        bracket: newBracket
-      };
-    } else {
-      // Eliminatorias
-      const phase = nextComp.phase;
-      const isVuelta = isTwoLegged && (nextComp.matchday || 0) % 2 !== 0 && phase !== 'Final';
-      const newBracket = { ...nextComp.bracket };
-      const matchesToProcess = Array.isArray(newBracket[phase]) ? newBracket[phase] : [newBracket[phase]].filter(Boolean);
-      const allResults: any[] = [];
-
-      matchesToProcess.forEach((m: any) => {
-        if (!m) return;
-        const homeId = isVuelta ? m.aId : m.hId;
-        const awayId = isVuelta ? m.hId : m.aId;
-        const h = (nextComp.teams || []).find((t: any) => t.id === homeId);
-        const a = (nextComp.teams || []).find((t: any) => t.id === awayId);
-        const { sh: simH, sa: simA } = simMatchGoals(h?.opp, h?.att, a?.def, a?.opp, a?.att, h?.def);
-
-        const matchSh = isVuelta ? simA : simH;
-        const matchSa = isVuelta ? simH : simA;
-        let penH: any = null, penA: any = null;
-
-        const isDraw = (isTwoLegged && isVuelta && phase !== 'Final')
-          ? ((m.sh || 0) + matchSh === (m.sa || 0) + matchSa)
-          : (matchSh === matchSa);
-
-        if (isDraw && (!isTwoLegged || isVuelta || phase === 'Final')) {
-          const penShootout = simPenaltyShootout(h?.att || 1, a?.def || 1, a?.att || 1, h?.def || 1);
-          penH = isVuelta ? penShootout.scoreA : penShootout.scoreH;
-          penA = isVuelta ? penShootout.scoreH : penShootout.scoreA;
-        }
-
-        if (isVuelta) {
-          m.sh2 = matchSh;
-          m.sa2 = matchSa;
-        } else {
-          m.sh = matchSh;
-          m.sa = matchSa;
-        }
-        if (penH !== null) {
-          m.penH = penH;
-          m.penA = penA;
-        }
-        allResults.push(isVuelta
-          ? { hId: m.aId, aId: m.hId, sh: matchSa, sa: matchSh, penH: penA, penA: penH }
-          : { hId: m.hId, aId: m.aId, sh: matchSh, sa: matchSa, penH, penA }
-        );
-      });
-
-      let nextPhase = phase;
-      let showWinner = false;
-      if (!isTwoLegged || isVuelta || phase === 'Final') {
-        const winners = matchesToProcess.map((m: any) => {
-          const tH = isTwoLegged && phase !== 'Final' ? (Number(m.sh || 0) + Number(m.sh2 || 0)) : Number(m.sh || 0);
-          const tA = isTwoLegged && phase !== 'Final' ? (Number(m.sa || 0) + Number(m.sa2 || 0)) : Number(m.sa || 0);
-          if (tH > tA) return m.hId;
-          if (tA > tH) return m.aId;
-          if (Number(m.penH || 0) > Number(m.penA || 0)) return m.hId;
-          if (Number(m.penA || 0) > Number(m.penA || 0)) return m.aId;
-          return (Math.random() < 0.5 ? m.hId : m.aId);
-        });
-
-        if (phase === 'Dieciseisavos') {
-          if (cId === 'C3' || newBracket.Playoffs) {
-            nextPhase = 'Playoffs';
-            newBracket.Playoffs = Array(8).fill(0).map((_, i) => ({
-              id: 'P' + (i + 1),
-              hId: winners[i] ?? nextComp.teams?.[i]?.id ?? (1 + i),
-              aId: winners[8 + i] ?? nextComp.teams?.[8 + i]?.id ?? (9 + i),
-              sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
-            }));
-          } else {
-            nextPhase = 'Octavos';
-            newBracket.Octavos = Array(8).fill(0).map((_, i) => ({
-              id: 'O' + (i + 1),
-              hId: newBracket.Octavos?.[i]?.hId ?? nextComp.teams?.[32 + i]?.id ?? (33 + i),
-              aId: winners[i] ?? nextComp.teams?.[i]?.id ?? (1 + i),
-              sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
-            }));
-          }
-        } else if (phase === 'Playoffs') {
-          nextPhase = 'Octavos';
-          newBracket.Octavos = Array(8).fill(0).map((_, i) => ({
-            id: 'O' + (i + 1),
-            hId: (33 + i),
-            aId: winners[i] ?? null,
-            sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
-          }));
-        } else if (phase === 'Octavos') {
-          nextPhase = 'Cuartos';
-          newBracket.Cuartos = Array(4).fill(0).map((_, i) => ({
-            id: 'Q' + (i + 1),
-            hId: winners[i * 2] ?? nextComp.teams?.[i * 2]?.id ?? (1 + i * 2),
-            aId: winners[i * 2 + 1] ?? nextComp.teams?.[i * 2 + 1]?.id ?? (2 + i * 2),
-            sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
-          }));
-        } else if (phase === 'Cuartos') {
-          nextPhase = 'Semis';
-          newBracket.Semis = Array(2).fill(0).map((_, i) => ({
-            id: 'S' + (i + 1),
-            hId: winners[i * 2] ?? nextComp.teams?.[i * 2]?.id ?? (1 + i * 2),
-            aId: winners[i * 2 + 1] ?? nextComp.teams?.[i * 2 + 1]?.id ?? (2 + i * 2),
-            sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
-          }));
-        } else if (phase === 'Semis') {
-          const losers = matchesToProcess.map((m: any, i: number) => {
-            return m.hId === winners[i] ? m.aId : m.hId;
-          });
-          newBracket.Final = [{
-            id: 'F1',
-            hId: winners[0] ?? nextComp.teams?.[0]?.id ?? 1,
-            aId: winners[1] ?? nextComp.teams?.[1]?.id ?? 2,
-            sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
-          }];
-          if (isWorldCup) {
-            newBracket.TercerPuesto = [{
-              id: 'TP1',
-              hId: losers[0] ?? nextComp.teams?.[2]?.id ?? 3,
-              aId: losers[1] ?? nextComp.teams?.[3]?.id ?? 4,
-              sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
-            }];
-            nextPhase = 'TercerPuesto';
-          } else {
-            nextPhase = 'Final';
-          }
-        } else if (phase === 'TercerPuesto') {
-          nextPhase = 'Final';
-        } else {
-          nextPhase = 'Terminado';
-          showWinner = true;
-        }
-      }
-
-      const dayLabel = phase === 'Final'
-        ? 'Gran Final'
-        : phase === 'TercerPuesto'
-        ? 'Tercer Puesto'
-        : (phase + (isTwoLegged ? (isVuelta ? ' (Vuelta)' : ' (Ida)') : ''));
-
-      nextComp = {
-        ...nextComp,
-        history: [{ day: dayLabel, results: allResults }, ...(nextComp.history || [])],
-        matchday: (nextComp.matchday || 0) + 1,
-        phase: nextPhase,
-        bracket: newBracket,
-        showWinner
-      };
-    }
-  }
-
-  return nextComp;
-};
-
 // Sincronización oficial entre UEFA Champions League (C1) y UEFA Europa League (C3):
 // Resuelve la fase de grupos de Champions League y transfiere los 8 terceros puestos auténticos (Grupos A a H) a Octavos de Europa League
 const resolveChampionsAndSyncEuropa = (currentComps: any, careerContext: any = null) => {
@@ -1111,7 +897,7 @@ const resolveChampionsAndSyncEuropa = (currentComps: any, careerContext: any = n
 
   // 3. Extraer los 8 terceros puestos oficiales de Champions League (Grupos A al H)
   if (c1 && Array.isArray(c1.groups) && c1.groups.length === 8 && Array.isArray(c1.teams)) {
-    let championsThirds: any[] = c1.groups.map((g: any, gi: number) => {
+    const championsThirds: any[] = c1.groups.map((g: any, gi: number) => {
       const groupTeams = c1.teams
         .filter((t: any) => g.teamIds && g.teamIds.includes(t.id))
         .sort((a: any, b: any) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
@@ -1126,14 +912,6 @@ const resolveChampionsAndSyncEuropa = (currentComps: any, careerContext: any = n
       }
       return null;
     }).filter(Boolean);
-
-    // Fallback de seguridad si faltan terceros
-    if (championsThirds.length < 8) {
-      const elPool = buildELPool(nextComps);
-      const needed = 8 - championsThirds.length;
-      const extra = (elPool?.championsThirds || []).slice(0, needed);
-      championsThirds = [...championsThirds, ...extra];
-    }
 
     if (championsThirds.length === 8 && c3) {
       let elBracket = c3.bracket ? JSON.parse(JSON.stringify(c3.bracket)) : {};
@@ -1156,40 +934,25 @@ const resolveChampionsAndSyncEuropa = (currentComps: any, careerContext: any = n
       const careerThirdIndex = championsThirds.findIndex(t => careerContext?.active && careerContext?.team && t.name === careerContext?.team?.name);
       const careerTransferId = careerThirdIndex !== -1 ? 33 + careerThirdIndex : c3.careerTeamId;
 
-      const octavosMatches = Array(8).fill(0).map((_, i) => {
-        const existingO = elBracket.Octavos?.[i];
-        const playoffMatch = elBracket.Playoffs?.[i];
-        
-        // Resolver ganador de Playoff si ya se jugaron ida y vuelta
-        let playoffWinnerId = null;
-        if (playoffMatch && playoffMatch.sh !== null && playoffMatch.sh !== undefined && playoffMatch.sh2 !== null && playoffMatch.sh2 !== undefined) {
-          const totH = Number(playoffMatch.sh || 0) + Number(playoffMatch.sh2 || 0);
-          const totA = Number(playoffMatch.sa || 0) + Number(playoffMatch.sa2 || 0);
-          if (totH > totA) {
-            playoffWinnerId = playoffMatch.hId;
-          } else if (totA > totH) {
-            playoffWinnerId = playoffMatch.aId;
-          } else {
-            const penH = Number(playoffMatch.penH || 0);
-            const penA = Number(playoffMatch.penA || 0);
-            playoffWinnerId = penH > penA ? playoffMatch.hId : playoffMatch.aId;
-          }
-        }
-
-        const resolvedAId = existingO?.aId ?? playoffWinnerId ?? null;
-
-        return {
-          id: 'O' + (i + 1),
-          hId: 33 + i,
-          aId: resolvedAId,
-          sh: existingO?.sh ?? null,
-          sa: existingO?.sa ?? null,
-          penH: existingO?.penH ?? null,
-          penA: existingO?.penA ?? null,
-          sh2: existingO?.sh2 ?? null,
-          sa2: existingO?.sa2 ?? null
-        };
-      });
+      const octavosMatches = Array(8).fill(0).map((_, i) => ({
+        id: 'O' + (i + 1),
+        hId: 33 + i,
+        aId: elBracket.Octavos?.[i]?.aId ?? elBracket.Playoffs?.[i] ? (
+          elBracket.Playoffs[i]?.sh !== null && elBracket.Playoffs[i]?.sh !== undefined ? (
+            ((elBracket.Playoffs[i]?.sh || 0) + (elBracket.Playoffs[i]?.sh2 || 0)) > ((elBracket.Playoffs[i]?.sa || 0) + (elBracket.Playoffs[i]?.sa2 || 0))
+              ? elBracket.Playoffs[i].hId
+              : ((elBracket.Playoffs[i]?.sh || 0) + (elBracket.Playoffs[i]?.sh2 || 0)) < ((elBracket.Playoffs[i]?.sa || 0) + (elBracket.Playoffs[i]?.sa2 || 0))
+              ? elBracket.Playoffs[i].aId
+              : ((elBracket.Playoffs[i]?.penH || 0) > (elBracket.Playoffs[i]?.penA || 0) ? elBracket.Playoffs[i].hId : elBracket.Playoffs[i].aId)
+          ) : null
+        ) : null,
+        sh: elBracket.Octavos?.[i]?.sh ?? null,
+        sa: elBracket.Octavos?.[i]?.sa ?? null,
+        penH: elBracket.Octavos?.[i]?.penH ?? null,
+        penA: elBracket.Octavos?.[i]?.penA ?? null,
+        sh2: elBracket.Octavos?.[i]?.sh2 ?? null,
+        sa2: elBracket.Octavos?.[i]?.sa2 ?? null
+      }));
 
       elBracket.Octavos = octavosMatches;
       nextComps['C3'] = {
@@ -3915,7 +3678,6 @@ const ConfigPanel = ({ initialComp, compId, onSave, onCancel, onTotalReset }) =>
 const restoreClubOriginalStatsInComps = (prevComps: any, origStats: any, teamNameFallback?: string) => {
   if (!prevComps) return prevComps;
   const targetId = origStats?.teamId;
-  const targetCompId = origStats?.compId;
   let att = origStats?.att;
   let opp = origStats?.opp;
   let def = origStats?.def;
@@ -3941,24 +3703,16 @@ const restoreClubOriginalStatsInComps = (prevComps: any, origStats: any, teamNam
     let newTeams = comp.teams;
     let newTeams2 = comp.teams2;
 
-    const shouldCheckThisComp = !targetCompId || compId === targetCompId || (teamNameFallback && (compId === 'C1' || compId === 'C3'));
-
-    if (shouldCheckThisComp && Array.isArray(newTeams)) {
-      const matchIdx = newTeams.findIndex((t: any) =>
-        (targetCompId && compId === targetCompId && targetId && t.id === targetId) ||
-        (teamNameFallback && t.name === teamNameFallback)
-      );
+    if (Array.isArray(newTeams)) {
+      const matchIdx = newTeams.findIndex((t: any) => (targetId && t.id === targetId) || (teamNameFallback && t.name === teamNameFallback));
       if (matchIdx >= 0) {
         newTeams = newTeams.map((t: any, i: number) => i === matchIdx ? { ...t, att, opp, def } : t);
         modified = true;
       }
     }
 
-    if (shouldCheckThisComp && Array.isArray(newTeams2)) {
-      const matchIdx = newTeams2.findIndex((t: any) =>
-        (targetCompId && compId === targetCompId && targetId && t.id === targetId) ||
-        (teamNameFallback && t.name === teamNameFallback)
-      );
+    if (Array.isArray(newTeams2)) {
+      const matchIdx = newTeams2.findIndex((t: any) => (targetId && t.id === targetId) || (teamNameFallback && t.name === teamNameFallback));
       if (matchIdx >= 0) {
         newTeams2 = newTeams2.map((t: any, i: number) => i === matchIdx ? { ...t, att, opp, def } : t);
         modified = true;
@@ -4093,193 +3847,6 @@ function DiceFootballApp() {
 
   useEffect(() => { try { window.localStorage.setItem(`${APP_ID}_comps`, JSON.stringify(comps)); } catch(e){} }, [comps]);
 
-  // ===== TEMPORADA GLOBAL / JORNADA GLOBAL =====
-  const [seasonState, setSeasonState] = useState(() => {
-    try {
-      const saved = window.localStorage.getItem(SEASON_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === 'object') return { ...DEFAULT_SEASON_STATE, ...parsed };
-      }
-    } catch (e) {}
-    return { ...DEFAULT_SEASON_STATE };
-  });
-
-  useEffect(() => { try { window.localStorage.setItem(SEASON_KEY, JSON.stringify(seasonState)); } catch(e){} }, [seasonState]);
-
-  const globalMatchday = seasonState.globalMatchday;
-
-  const pendingLeagueIds = useMemo(
-    () => LEAGUE_IDS.filter(id => leaguePendingAt(comps[id], globalMatchday)),
-    [comps, globalMatchday]
-  );
-  const allLeaguesFinished = useMemo(() => LEAGUE_IDS.every(id => leagueSeasonOver(comps[id])), [comps]);
-  const clFinal = comps['C1']?.bracket?.Final?.[0] || comps['C1']?.bracket?.Final;
-  const championsFinished = !!(clFinal && clFinal.sh !== null && clFinal.sh !== undefined);
-
-  // ==========================================
-  // MODO CARRERA (GDD DiceLeague V8 + V11)
-  // ==========================================
-  const CAREER_KEY = `${APP_ID}_career`;
-  const CAREER_HISTORY_KEY = `${APP_ID}_career_history`;
-  const [career, setCareer] = useState(() => {
-    try {
-      const saved = window.localStorage.getItem(CAREER_KEY);
-      if (saved) { const parsed = JSON.parse(saved); if (parsed && typeof parsed === 'object') return { ...DEFAULT_CAREER, ...parsed }; }
-    } catch (e) {}
-    return { ...DEFAULT_CAREER };
-  });
-  useEffect(() => { try { window.localStorage.setItem(CAREER_KEY, JSON.stringify(career)); } catch (e) {} }, [career]);
-
-  const [pastCareers, setPastCareers] = useState<any[]>(() => {
-    try {
-      const saved = window.localStorage.getItem(CAREER_HISTORY_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (e) {}
-    return [];
-  });
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(CAREER_HISTORY_KEY, JSON.stringify(pastCareers));
-    } catch (e) {}
-  }, [pastCareers]);
-
-  const [careerReview, setCareerReview] = useState(null);
-  const [simulationInjuryAlert, setSimulationInjuryAlert] = useState<{
-    affectedAttr: 'att' | 'opp' | 'def';
-    attrLabel: string;
-    die: number;
-    physioCost: number;
-    categoryLabel: string;
-    isChampions?: boolean;
-  } | null>(null);
-
-  const careerComp = comps[career.compId] || comps[CAREER_LEAGUE_ID];
-  const careerTeamsKey = career.div === 2 ? 'teams2' : 'teams';
-  const careerTeams = careerComp?.[careerTeamsKey] || [];
-  const careerTeam = careerTeams.find(t => t.id === career.teamId) || null;
-  const careerMdKey = career.div === 2 ? 'matchday2' : 'matchday';
-  const careerHistKey = career.div === 2 ? 'history2' : 'history';
-  const careerMd = careerComp?.[careerMdKey] || 0;
-  const careerSchedule = useMemo(() => generateLeagueSchedule(careerTeams), [careerTeams]);
-  const careerStandings = useMemo(
-    () => [...careerTeams].sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf),
-    [careerTeams]
-  );
-  const careerPosition = careerStandings.findIndex(t => t.id === career.teamId) + 1;
-  const careerDivisionFinished = careerSchedule.length > 0 && careerMd >= careerSchedule.length;
-  const careerFixture = !careerDivisionFinished
-    ? (careerSchedule[careerMd] || []).find(m => m.homeId === career.teamId || m.awayId === career.teamId)
-    : null;
-  const careerIsHome = !!careerFixture && careerFixture.homeId === career.teamId;
-  const careerRival = careerFixture
-    ? careerTeams.find(t => t.id === (careerIsHome ? careerFixture.awayId : careerFixture.homeId))
-    : null;
-  const careerWorldPending = pendingLeagueIds.filter(id => id !== career.compId).length;
-  // Candidatos para (re)empezar: si la temporada de Segunda ya está en marcha,
-  // los 5 últimos de la tabla real de Miscelánea; si no, los 5 más humildes.
-  const careerCandidates = useMemo(() => {
-    const miscelanea = comps[CAREER_LEAGUE_ID];
-    const pool = miscelanea?.teams2 || [];
-    const playedAny = (miscelanea?.matchday2 || 0) > 0 || pool.some(t => (t.p || 0) > 0);
-    let list;
-    if (playedAny) {
-      const standings = [...pool].sort((a, b) => (b.pts || 0) - (a.pts || 0) || ((b.gf || 0) - (b.ga || 0)) - ((a.gf || 0) - (a.ga || 0)) || (b.gf || 0) - (a.gf || 0));
-      list = standings.slice(Math.max(0, standings.length - 5));
-    } else {
-      list = worstTeams(pool, 5);
-    }
-    const firstId = career.firstTeamId;
-    if (firstId && career.firstTeamCompId === CAREER_LEAGUE_ID && !list.some(t => t.id === firstId)) {
-      const first = pool.find(t => t.id === firstId);
-      if (first && tierOf(first) <= 2) list.push(first);
-    }
-    return list;
-  }, [comps, career.firstTeamId, career.firstTeamCompId]);
-  const careerUi = { Shield, DieIcon, FormBadges, PenaltyDots };
-
-  const handleDeleteCareerHard = () => {
-    // Restaurar atributos originales del club en la liga si fueron mejorados con PE
-    if (career.originalTeamStats || careerTeam) {
-      setComps(prev => restoreClubOriginalStatsInComps(prev, career.originalTeamStats, careerTeam?.name));
-    }
-
-    setCareer({ ...DEFAULT_CAREER });
-    try {
-      window.localStorage.removeItem(CAREER_KEY);
-    } catch (e) {}
-    setView('careerSelect');
-  };
-
-  const handleArchiveAndResetCareer = () => {
-    // Archivar carrera actual con fecha y datos del club
-    const archiveEntry = {
-      id: 'arch_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
-      date: new Date().toISOString(),
-      archivedAt: new Date().toISOString(),
-      manager: career.manager || 'Entrenador',
-      teamName: careerTeam?.name || 'Club',
-      teamId: career.teamId,
-      compId: career.compId,
-      div: career.div,
-      color1: careerTeam?.color1 || '#1e3a8a',
-      color2: careerTeam?.color2 || '#3b82f6',
-      isFlag: careerTeam?.isFlag,
-      reputation: career.reputation || 10,
-      tier: career.tier || 1,
-      startedSeason: 1,
-      finalSeason: (career.seasonHistory || []).length + (career.seasonLog?.length ? 1 : 1),
-      seasonsCount: (career.seasonHistory || []).length + (career.seasonLog?.length ? 1 : 1),
-      stats: {
-        matches: career.stats?.matches || 0,
-        wins: career.stats?.wins || 0,
-        draws: career.stats?.draws || 0,
-        losses: career.stats?.losses || 0,
-        gf: career.stats?.gf || 0,
-        ga: career.stats?.ga || 0,
-      },
-      trophies: {
-        leagues: career.trophies?.leagues || 0,
-        champions: career.trophies?.champions || 0,
-        promotions: career.trophies?.promotions || 0,
-      },
-      seasonHistory: [...(career.seasonHistory || [])],
-      clParticipations: career.clParticipations || 0,
-      hallOfFame: career.hallOfFame || false,
-      isChampion: (career.trophies?.leagues || 0) > 0 || (career.trophies?.champions || 0) > 0,
-      status: (career.trophies?.champions || 0) > 0 ? 'Leyenda Continental' : (career.trophies?.leagues || 0) > 0 ? 'Campeón de Liga' : 'Proyecto Finalizado'
-    };
-
-    setPastCareers(prev => [archiveEntry, ...prev]);
-
-    // Restaurar atributos originales del club en la liga si fueron mejorados con PE
-    if (career.originalTeamStats || careerTeam) {
-      setComps(prev => restoreClubOriginalStatsInComps(prev, career.originalTeamStats, careerTeam?.name));
-    }
-
-    setCareer({ ...DEFAULT_CAREER });
-    try {
-      window.localStorage.removeItem(CAREER_KEY);
-    } catch (e) {}
-    setView('careerSelect');
-  };
-
-  const handleDeletePastCareer = (idOrIndex: string | number) => {
-    setPastCareers(prev => prev.filter((c, i) => (typeof idOrIndex === 'number' ? i !== idOrIndex : c.id !== idOrIndex)));
-  };
-
-  // Sincronización reactiva inmediata: si Europa League está en Octavos (o superior) pero Champions League aún está en fase de grupos, resolver automáticamente las 6 jornadas de Champions y transferir los 8 terceros a Octavos.
-  useEffect(() => {
-    const c3 = comps['C3'];
-    const c1 = comps['C1'];
-    if (c3 && c1 && ['Octavos', 'Cuartos', 'Semis', 'Final'].includes(c3.phase) && c1.phase === 'groups') {
-      setComps(prev => resolveChampionsAndSyncEuropa(prev, { active: career?.active, team: careerTeam }));
-    }
-  }, [comps, activeCompId, career?.active, careerTeam]);
-
   // Recupera en el registro permanente cualquier edición que todavía exista
   // en el historial visual de una partida creada antes del palmarés acumulativo.
   useEffect(() => {
@@ -4354,6 +3921,31 @@ function DiceFootballApp() {
   const activeComp = comps[activeCompId];
   const updateActiveComp = (newData) => setComps(prev => ({ ...prev, [activeCompId]: { ...prev[activeCompId], ...newData } }));
   const updateCompById = (cId: string, newData: any) => setComps(prev => ({ ...prev, [cId]: { ...prev[cId], ...newData } }));
+
+  // ===== TEMPORADA GLOBAL / JORNADA GLOBAL =====
+  const [seasonState, setSeasonState] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem(SEASON_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return { ...DEFAULT_SEASON_STATE, ...parsed };
+      }
+    } catch (e) {}
+    return { ...DEFAULT_SEASON_STATE };
+  });
+
+  useEffect(() => { try { window.localStorage.setItem(SEASON_KEY, JSON.stringify(seasonState)); } catch(e){} }, [seasonState]);
+
+  const globalMatchday = seasonState.globalMatchday;
+
+
+  const pendingLeagueIds = useMemo(
+    () => LEAGUE_IDS.filter(id => leaguePendingAt(comps[id], globalMatchday)),
+    [comps, globalMatchday]
+  );
+  const allLeaguesFinished = useMemo(() => LEAGUE_IDS.every(id => leagueSeasonOver(comps[id])), [comps]);
+  const clFinal = comps['C1']?.bracket?.Final?.[0] || comps['C1']?.bracket?.Final;
+  const championsFinished = !!(clFinal && clFinal.sh !== null && clFinal.sh !== undefined);
 
   // Cierre de temporada global: guarda clasificaciones finales, actualiza
   // previousStandings y genera (congela) los 32 de la Champions.
@@ -4953,6 +4545,159 @@ function DiceFootballApp() {
   // Tras un partido manual: el resto del universo resuelve la misma jornada global.
   const simulateOtherLeaguesToGlobal = (exceptId) =>
     syncLeaguesToGlobal(LEAGUE_IDS.filter(id => id !== exceptId));
+
+  // ==========================================
+  // MODO CARRERA (GDD DiceLeague V8 + V11)
+  // ==========================================
+  const CAREER_KEY = `${APP_ID}_career`;
+  const CAREER_HISTORY_KEY = `${APP_ID}_career_history`;
+  const [career, setCareer] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem(CAREER_KEY);
+      if (saved) { const parsed = JSON.parse(saved); if (parsed && typeof parsed === 'object') return { ...DEFAULT_CAREER, ...parsed }; }
+    } catch (e) {}
+    return { ...DEFAULT_CAREER };
+  });
+  useEffect(() => { try { window.localStorage.setItem(CAREER_KEY, JSON.stringify(career)); } catch (e) {} }, [career]);
+
+  const [pastCareers, setPastCareers] = useState<any[]>(() => {
+    try {
+      const saved = window.localStorage.getItem(CAREER_HISTORY_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return [];
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(CAREER_HISTORY_KEY, JSON.stringify(pastCareers));
+    } catch (e) {}
+  }, [pastCareers]);
+
+  const handleDeleteCareerHard = () => {
+    // Restaurar atributos originales del club en la liga si fueron mejorados con PE
+    if (career.originalTeamStats || careerTeam) {
+      setComps(prev => restoreClubOriginalStatsInComps(prev, career.originalTeamStats, careerTeam?.name));
+    }
+
+    setCareer({ ...DEFAULT_CAREER });
+    try {
+      window.localStorage.removeItem(CAREER_KEY);
+    } catch (e) {}
+    setView('careerSelect');
+  };
+
+  const handleArchiveAndResetCareer = () => {
+    // Archivar carrera actual con fecha y datos del club
+    const archiveEntry = {
+      id: 'arch_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+      date: new Date().toISOString(),
+      archivedAt: new Date().toISOString(),
+      manager: career.manager || 'Entrenador',
+      teamName: careerTeam?.name || 'Club',
+      teamId: career.teamId,
+      compId: career.compId,
+      div: career.div,
+      color1: careerTeam?.color1 || '#1e3a8a',
+      color2: careerTeam?.color2 || '#3b82f6',
+      isFlag: careerTeam?.isFlag,
+      reputation: career.reputation || 10,
+      tier: career.tier || 1,
+      startedSeason: 1,
+      finalSeason: (career.seasonHistory || []).length + (career.seasonLog?.length ? 1 : 1),
+      seasonsCount: (career.seasonHistory || []).length + (career.seasonLog?.length ? 1 : 1),
+      stats: {
+        matches: career.stats?.matches || 0,
+        wins: career.stats?.wins || 0,
+        draws: career.stats?.draws || 0,
+        losses: career.stats?.losses || 0,
+        gf: career.stats?.gf || 0,
+        ga: career.stats?.ga || 0,
+      },
+      trophies: {
+        leagues: career.trophies?.leagues || 0,
+        champions: career.trophies?.champions || 0,
+        promotions: career.trophies?.promotions || 0,
+      },
+      seasonHistory: [...(career.seasonHistory || [])],
+      clParticipations: career.clParticipations || 0,
+      hallOfFame: career.hallOfFame || false,
+      isChampion: (career.trophies?.leagues || 0) > 0 || (career.trophies?.champions || 0) > 0,
+      status: (career.trophies?.champions || 0) > 0 ? 'Leyenda Continental' : (career.trophies?.leagues || 0) > 0 ? 'Campeón de Liga' : 'Proyecto Finalizado'
+    };
+
+    setPastCareers(prev => [archiveEntry, ...prev]);
+
+    // Restaurar atributos originales del club en la liga si fueron mejorados con PE
+    if (career.originalTeamStats || careerTeam) {
+      setComps(prev => restoreClubOriginalStatsInComps(prev, career.originalTeamStats, careerTeam?.name));
+    }
+
+    setCareer({ ...DEFAULT_CAREER });
+    try {
+      window.localStorage.removeItem(CAREER_KEY);
+    } catch (e) {}
+    setView('careerSelect');
+  };
+
+  const handleDeletePastCareer = (idOrIndex: string | number) => {
+    setPastCareers(prev => prev.filter((c, i) => (typeof idOrIndex === 'number' ? i !== idOrIndex : c.id !== idOrIndex)));
+  };
+  const [careerReview, setCareerReview] = useState(null);
+  const [simulationInjuryAlert, setSimulationInjuryAlert] = useState<{
+    affectedAttr: 'att' | 'opp' | 'def';
+    attrLabel: string;
+    die: number;
+    physioCost: number;
+    categoryLabel: string;
+    isChampions?: boolean;
+  } | null>(null);
+
+  const careerComp = comps[career.compId] || comps[CAREER_LEAGUE_ID];
+  const careerTeamsKey = career.div === 2 ? 'teams2' : 'teams';
+  const careerTeams = careerComp?.[careerTeamsKey] || [];
+  const careerTeam = careerTeams.find(t => t.id === career.teamId) || null;
+  const careerMdKey = career.div === 2 ? 'matchday2' : 'matchday';
+  const careerHistKey = career.div === 2 ? 'history2' : 'history';
+  const careerMd = careerComp?.[careerMdKey] || 0;
+  const careerSchedule = useMemo(() => generateLeagueSchedule(careerTeams), [careerTeams]);
+  const careerStandings = useMemo(
+    () => [...careerTeams].sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf),
+    [careerTeams]
+  );
+  const careerPosition = careerStandings.findIndex(t => t.id === career.teamId) + 1;
+  const careerDivisionFinished = careerSchedule.length > 0 && careerMd >= careerSchedule.length;
+  const careerFixture = !careerDivisionFinished
+    ? (careerSchedule[careerMd] || []).find(m => m.homeId === career.teamId || m.awayId === career.teamId)
+    : null;
+  const careerIsHome = !!careerFixture && careerFixture.homeId === career.teamId;
+  const careerRival = careerFixture
+    ? careerTeams.find(t => t.id === (careerIsHome ? careerFixture.awayId : careerFixture.homeId))
+    : null;
+  const careerWorldPending = pendingLeagueIds.filter(id => id !== career.compId).length;
+  // Candidatos para (re)empezar: si la temporada de Segunda ya está en marcha,
+  // los 5 últimos de la tabla real de Miscelánea; si no, los 5 más humildes.
+  const careerCandidates = useMemo(() => {
+    const miscelanea = comps[CAREER_LEAGUE_ID];
+    const pool = miscelanea?.teams2 || [];
+    const playedAny = (miscelanea?.matchday2 || 0) > 0 || pool.some(t => (t.p || 0) > 0);
+    let list;
+    if (playedAny) {
+      const standings = [...pool].sort((a, b) => (b.pts || 0) - (a.pts || 0) || ((b.gf || 0) - (b.ga || 0)) - ((a.gf || 0) - (a.ga || 0)) || (b.gf || 0) - (a.gf || 0));
+      list = standings.slice(Math.max(0, standings.length - 5));
+    } else {
+      list = worstTeams(pool, 5);
+    }
+    const firstId = career.firstTeamId;
+    if (firstId && career.firstTeamCompId === CAREER_LEAGUE_ID && !list.some(t => t.id === firstId)) {
+      const first = pool.find(t => t.id === firstId);
+      if (first && tierOf(first) <= 2) list.push(first);
+    }
+    return list;
+  }, [comps, career.firstTeamId, career.firstTeamCompId]);
+  const careerUi = { Shield, DieIcon, FormBadges, PenaltyDots };
 
   // RESTAURACIÓN Y PROTECCIÓN DE ESTADÍSTICAS DEL EQUIPO (Estadísticas originales + mejoras de P/E)
   useEffect(() => {
@@ -5810,31 +5555,27 @@ function DiceFootballApp() {
   const clComp = comps['C1'];
   const careerClTeam = useMemo(() => {
     if (!careerTeam || !clComp?.teams?.length) return null;
-    return clComp.teams.find((t: any) => t.name === careerTeam.name) ||
-      (clComp.careerTeamId ? clComp.teams.find((t: any) => t.id === clComp.careerTeamId) : null) ||
-      (clComp.careerTeamName ? clComp.teams.find((t: any) => t.name === clComp.careerTeamName) : null) || null;
+    return clComp.teams.find(t => t.id === clComp.careerTeamId) ||
+      clComp.teams.find(t => t.name === (clComp.careerTeamName || careerTeam.name)) || null;
   }, [clComp, careerTeam]);
 
   const careerClWinnerId = useMemo(() => {
-    const finalMatch = Array.isArray(clComp?.bracket?.Final)
-      ? clComp.bracket.Final[0]
-      : (clComp?.bracket?.Final && typeof clComp.bracket.Final === 'object' ? clComp.bracket.Final : null);
-    if (!finalMatch || finalMatch.sh === null || finalMatch.sh === undefined) return null;
-    const tH = finalMatch.sh, tA = finalMatch.sa;
-    if (tH > tA) return finalMatch.hId;
-    if (tA > tH) return finalMatch.aId;
-    return (finalMatch.penH || 0) > (finalMatch.penA || 0) ? finalMatch.hId : finalMatch.aId;
+    const final = clComp?.bracket?.Final?.[0] || clComp?.bracket?.Final;
+    if (!final || final.sh === null || final.sh === undefined) return null;
+    const tH = final.sh, tA = final.sa;
+    if (tH > tA) return final.hId;
+    if (tA > tH) return final.aId;
+    return (final.penH || 0) > (final.penA || 0) ? final.hId : final.aId;
   }, [clComp]);
 
   const careerClAlive = useMemo(() => {
     if (!careerClTeam || !clComp) return false;
     if (clComp.phase === 'groups') return true;
     if (clComp.phase === 'Terminado') return careerClWinnerId === careerClTeam.id;
-    const bracketPhase = clComp.bracket?.[clComp.phase];
-    const matches = Array.isArray(bracketPhase)
-      ? bracketPhase
-      : (bracketPhase && typeof bracketPhase === 'object' ? [bracketPhase] : []);
-    return matches.some(m => m && (m.hId === careerClTeam.id || m.aId === careerClTeam.id));
+    const matches = Array.isArray(clComp.bracket?.[clComp.phase])
+      ? clComp.bracket[clComp.phase]
+      : [clComp.bracket?.[clComp.phase]].filter(Boolean);
+    return matches.some(m => m.hId === careerClTeam.id || m.aId === careerClTeam.id);
   }, [clComp, careerClTeam, careerClWinnerId]);
 
   const careerClInfo = useMemo(() => {
@@ -5842,11 +5583,10 @@ function DiceFootballApp() {
     const champion = careerClWinnerId === careerClTeam.id;
     const rival = (() => {
       if (!clComp || clComp.phase === 'groups' || clComp.phase === 'Terminado') return null;
-      const bracketPhase = clComp.bracket?.[clComp.phase];
-      const matches = Array.isArray(bracketPhase)
-        ? bracketPhase
-        : (bracketPhase && typeof bracketPhase === 'object' ? [bracketPhase] : []);
-      const m = matches.find(x => x && (x.hId === careerClTeam.id || x.aId === careerClTeam.id));
+      const matches = Array.isArray(clComp.bracket?.[clComp.phase])
+        ? clComp.bracket[clComp.phase]
+        : [clComp.bracket?.[clComp.phase]].filter(Boolean);
+      const m = matches.find(x => x.hId === careerClTeam.id || x.aId === careerClTeam.id);
       if (!m) return null;
       const rivalId = m.hId === careerClTeam.id ? m.aId : m.hId;
       return clComp.teams.find(t => t.id === rivalId) || null;
@@ -6582,13 +6322,11 @@ function DiceFootballApp() {
         let showWinner = false;
         if (!isChampions || isVuelta || phase === 'Final') {
           const winners = matchesToProcess.map((m: any) => {
-            const tH = isChampions && phase !== 'Final' ? (Number(m.sh || 0) + Number(m.sh2 || 0)) : Number(m.sh || 0);
-            const tA = isChampions && phase !== 'Final' ? (Number(m.sa || 0) + Number(m.sa2 || 0)) : Number(m.sa || 0);
+            const tH = isChampions && phase !== 'Final' ? ((m.sh || 0) + (m.sh2 || 0)) : (m.sh || 0);
+            const tA = isChampions && phase !== 'Final' ? ((m.sa || 0) + (m.sa2 || 0)) : (m.sa || 0);
             if (tH > tA) return m.hId;
             if (tA > tH) return m.aId;
-            if (Number(m.penH || 0) > Number(m.penA || 0)) return m.hId;
-            if (Number(m.penA || 0) > Number(m.penH || 0)) return m.aId;
-            return (Math.random() < 0.5 ? m.hId : m.aId);
+            return (m.penH || 0) > (m.penA || 0) ? m.hId : m.aId;
           });
 
           if (phase === 'Dieciseisavos') {
@@ -6605,38 +6343,32 @@ function DiceFootballApp() {
               newBracket.Octavos = Array(8).fill(0).map((_, i) => ({
                 id: 'O' + (i + 1),
                 hId: newBracket.Octavos?.[i]?.hId ?? comp.teams?.[32 + i]?.id ?? (33 + i),
-                aId: winners[i] ?? comp.teams?.[i]?.id ?? (1 + i),
+                aId: winners[i] ?? comp.teams?.[i]?.id ?? 1,
                 sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
               }));
             }
           } else if (phase === 'Playoffs') {
             nextPhase = 'Octavos';
-            if (targetId === 'C3') {
-              const synced = resolveChampionsAndSyncEuropa({ ...comps, C3: { ...comp, bracket: newBracket } });
-              if (synced['C3']?.teams?.length) {
-                comp.teams = synced['C3'].teams;
-              }
-            }
             newBracket.Octavos = Array(8).fill(0).map((_, i) => ({
               id: 'O' + (i + 1),
-              hId: (33 + i),
-              aId: winners[i] ?? null,
+              hId: newBracket.Octavos?.[i]?.hId ?? comp.teams?.[32 + i]?.id ?? (33 + i),
+              aId: winners[i] ?? comp.teams?.[i]?.id ?? 1,
               sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
             }));
           } else if (phase === 'Octavos') {
             nextPhase = 'Cuartos';
             newBracket.Cuartos = Array(4).fill(0).map((_, i) => ({
               id: 'Q' + (i + 1),
-              hId: winners[i * 2] ?? comp.teams?.[i * 2]?.id ?? (1 + i * 2),
-              aId: winners[i * 2 + 1] ?? comp.teams?.[i * 2 + 1]?.id ?? (2 + i * 2),
+              hId: winners[i * 2] ?? comp.teams?.[i * 2]?.id ?? 0,
+              aId: winners[i * 2 + 1] ?? comp.teams?.[i * 2 + 1]?.id ?? 1,
               sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
             }));
           } else if (phase === 'Cuartos') {
             nextPhase = 'Semis';
             newBracket.Semis = Array(2).fill(0).map((_, i) => ({
               id: 'S' + (i + 1),
-              hId: winners[i * 2] ?? comp.teams?.[i * 2]?.id ?? (1 + i * 2),
-              aId: winners[i * 2 + 1] ?? comp.teams?.[i * 2 + 1]?.id ?? (2 + i * 2),
+              hId: winners[i * 2] ?? comp.teams?.[i * 2]?.id ?? 0,
+              aId: winners[i * 2 + 1] ?? comp.teams?.[i * 2 + 1]?.id ?? 1,
               sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
             }));
           } else if (phase === 'Semis') {
@@ -6645,15 +6377,15 @@ function DiceFootballApp() {
             });
             newBracket.Final = [{
               id: 'F1',
-              hId: winners[0] ?? comp.teams?.[0]?.id ?? 1,
-              aId: winners[1] ?? comp.teams?.[1]?.id ?? 2,
+              hId: winners[0] ?? comp.teams?.[0]?.id ?? 0,
+              aId: winners[1] ?? comp.teams?.[1]?.id ?? 1,
               sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
             }];
             if (isWorldCup) {
               newBracket.TercerPuesto = [{
                 id: 'TP1',
-                hId: losers[0] ?? comp.teams?.[2]?.id ?? 3,
-                aId: losers[1] ?? comp.teams?.[3]?.id ?? 4,
+                hId: losers[0] ?? comp.teams?.[2]?.id ?? 0,
+                aId: losers[1] ?? comp.teams?.[3]?.id ?? 1,
                 sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
               }];
               nextPhase = 'TercerPuesto';
@@ -6984,106 +6716,32 @@ function DiceFootballApp() {
   // Firmar por un club nuevo: contrato limpio, sin rastro del despido anterior.
   // La reputación viaja contigo y da un plus si el club es mayor.
   // El club previo recupera sus estadísticas de fuerza originales.
-  const acceptCareerOffer = (offer: any) => {
-    if (!offer) return;
-    const targetCompId = offer.compId || CAREER_LEAGUE_ID;
-    const targetDiv = offer.div === 2 ? 2 : 1;
-    const teams = targetDiv === 2 ? comps[targetCompId]?.teams2 : comps[targetCompId]?.teams;
-    const team = (teams || []).find((t: any) => t.id === offer.teamId) || (teams || []).find((t: any) => t.name === offer.teamName);
-    const season = seasonState.season || 1;
-
+  const acceptCareerOffer = (offer) => {
     // Si el entrenador cambia de club, el club que entrenaba recupera sus estadísticas de fuerza originales
-    // y se sincroniza el nuevo equipo si está en competiciones continentales (Champions League C1 o Europa League C3)
-    setComps(prev => {
-      let nextComps = (career.originalTeamStats || careerTeam)
-        ? restoreClubOriginalStatsInComps(prev, career.originalTeamStats, careerTeam?.name)
-        : { ...prev };
+    if (career.originalTeamStats || careerTeam) {
+      setComps(prev => restoreClubOriginalStatsInComps(prev, career.originalTeamStats, careerTeam?.name));
+    }
 
-      const newTeamName = team?.name || offer.teamName;
-
-      // Sincronizar en Champions League (C1)
-      if (nextComps['C1']?.teams?.length) {
-        const clTeam = nextComps['C1'].teams.find((t: any) => t.name === newTeamName);
-        if (clTeam) {
-          nextComps = {
-            ...nextComps,
-            C1: {
-              ...nextComps['C1'],
-              careerTeamName: clTeam.name,
-              careerTeamId: clTeam.id,
-              userTeamId: clTeam.id
-            }
-          };
-        } else if (careerTeam && nextComps['C1'].careerTeamName === careerTeam.name) {
-          nextComps = {
-            ...nextComps,
-            C1: {
-              ...nextComps['C1'],
-              careerTeamName: null,
-              careerTeamId: null
-            }
-          };
-        }
-      }
-
-      // Sincronizar en Europa League (C3)
-      if (nextComps['C3']?.teams?.length) {
-        const elTeam = nextComps['C3'].teams.find((t: any) => t.name === newTeamName);
-        if (elTeam) {
-          nextComps = {
-            ...nextComps,
-            C3: {
-              ...nextComps['C3'],
-              careerTeamName: elTeam.name,
-              careerTeamId: elTeam.id,
-              userTeamId: elTeam.id
-            }
-          };
-        } else if (careerTeam && nextComps['C3'].careerTeamName === careerTeam.name) {
-          nextComps = {
-            ...nextComps,
-            C3: {
-              ...nextComps['C3'],
-              careerTeamName: null,
-              careerTeamId: null
-            }
-          };
-        }
-      }
-
-      return nextComps;
-    });
-
-    const resolvedTeamId = team?.id || offer.teamId;
-    const resolvedTier = offer.tier || (team ? tierOf(team) : 1);
+    const teams = offer.div === 2 ? comps[offer.compId]?.teams2 : comps[offer.compId]?.teams;
+    const team = (teams || []).find(t => t.id === offer.teamId);
+    const season = seasonState.season || 1;
     const bonus = signingRepBonus({
       fromTier: career.tier || 1,
-      toTier: resolvedTier,
+      toTier: offer.tier || 1,
       fromStrength: (careerTeam?.att || 0) + (careerTeam?.opp || 0) + (careerTeam?.def || 0),
       toStrength: (team?.att || 0) + (team?.opp || 0) + (team?.def || 0)
     });
-
-    const isQualifiedForCl = !!(comps['C1']?.teams?.some((t: any) => t.name === (team?.name || offer.teamName)));
-
-    setCareer((c: any) => ({
+    setCareer(c => ({
       ...c,
       active: true,
-      compId: targetCompId,
-      div: targetDiv,
-      teamId: resolvedTeamId,
-      tier: resolvedTier,
-      pe: 0,
-      fired: false,
-      offers: [],
-      seasonLog: [],
+      compId: offer.compId, div: offer.div, teamId: offer.teamId,
+      tier: offer.tier, pe: 0, fired: false, offers: [], seasonLog: [],
       activeApplication: null,
       pendingAppResolutionModal: null,
       transferredInSeason: season,
-      reputation: clampRep((c.reputation || 10) + bonus),
+      reputation: clampRep(c.reputation + bonus),
       signingBonus: bonus,
-      clQualified: isQualifiedForCl,
-      clQualifiedFor: isQualifiedForCl ? season : null,
-      badStreak: 0,
+      clQualifiedFor: null, badStreak: 0,
       contractStart: season + 1,
       contractSeasons: CONTRACT_SEASONS,
       signedForSeason: season,
@@ -7095,9 +6753,8 @@ function DiceFootballApp() {
       lastSimulationFeedback: null,
       originalTeamStats: team ? {
         teamId: team.id,
-        teamName: team.name,
-        compId: targetCompId,
-        div: targetDiv,
+        compId: offer.compId,
+        div: offer.div,
         att: team.att,
         opp: team.opp,
         def: team.def
@@ -7363,7 +7020,7 @@ function DiceFootballApp() {
 
   // Resuelve la ronda/jornada actual de una copa o mundial.
   // `ms` = resultado jugado manualmente por el usuario, o null para simular TODO.
-  const processCupRound = (ms?: any, targetCompId?: string, isAutoSimManual?: boolean, isSubSync: boolean = false) => {
+  const processCupRound = (ms?: any, targetCompId?: string, isAutoSimManual?: boolean) => {
     const cId = targetCompId || activeCompId;
     const currentComp = comps[cId];
     if (!currentComp || currentComp.type === 'league') return;
@@ -7402,27 +7059,15 @@ function DiceFootballApp() {
        let newBracket = null;
        if (isEndOfGroups) newBracket = generateKnockoutBrackets({ ...currentComp, teams: updatedTeams });
         const updatedComp = { teams: updatedTeams, history: [{ day: 'Jornada ' + nextMatchday, results }, ...currentComp.history], matchday: nextMatchday, phase: isEndOfGroups ? (newBracket.Octavos ? 'Octavos' : 'Cuartos') : 'groups', bracket: newBracket };
-        
-        setComps(prev => {
-          let nextComps = { ...prev, [cId]: { ...prev[cId], ...updatedComp } };
-          
-          if (cId === 'C1') {
-            let elComp = nextComps['C3'];
-            if (isEndOfGroups) {
-              nextComps = resolveChampionsAndSyncEuropa(nextComps, { active: career?.active, team: careerTeam });
-            } else if (elComp && elComp.phase !== 'Terminado' && !elComp.showWinner) {
-              // C1 J1-J2 -> UEL Dieciseisavos Ida; J3-J4 -> UEL Dieciseisavos Vuelta; J5 -> UEL Playoffs Ida; J6 -> UEL Playoffs Vuelta
-              if (nextMatchday === 1 && elComp.phase === 'Dieciseisavos' && (elComp.matchday || 0) === 0) {
-                nextComps['C3'] = simulateCompSteps(elComp, 'C3', 1);
-              } else if (nextMatchday === 3 && elComp.phase === 'Dieciseisavos' && (elComp.matchday || 0) === 1) {
-                nextComps['C3'] = simulateCompSteps(elComp, 'C3', 1);
-              } else if (nextMatchday === 5 && elComp.phase === 'Playoffs' && (elComp.matchday || 0) === 0) {
-                nextComps['C3'] = simulateCompSteps(elComp, 'C3', 1);
-              }
-            }
+        updateCompById(cId, updatedComp);
+
+        // Sincronizar Europa League con repescados de Champions League
+        if (cId === 'C1' && isEndOfGroups) {
+          const synced = resolveChampionsAndSyncEuropa({ ...comps, C1: { ...currentComp, teams: updatedTeams, history: [{ day: 'Jornada ' + nextMatchday, results }, ...currentComp.history], matchday: nextMatchday, phase: (newBracket?.Octavos ? 'Octavos' : 'Cuartos'), bracket: newBracket } }, { active: career?.active, team: careerTeam });
+          if (synced['C3']) {
+            updateCompById('C3', synced['C3']);
           }
-          return nextComps;
-        });
+        }
 
         // Check if user's team was eliminated in group stage (solo en vista standalone de competición)
         if (isEndOfGroups && cId === activeCompId) {
@@ -7453,79 +7098,37 @@ function DiceFootballApp() {
        const isVuelta = isTwoLegged && currentComp.matchday % 2 !== 0 && phase !== 'Final';
        const newBracket = { ...currentComp.bracket };
        const matchesToProcess = Array.isArray(newBracket[phase]) ? newBracket[phase] : [newBracket[phase]];
-       const allResults: any[] = [];
+       const allResults = [];
 
        matchesToProcess.forEach(m => {
-          if (!m) return;
-          let sh: number, sa: number, penH: any = null, penA: any = null;
-          if (ms && ((m.hId === ms.home.id && m.aId === ms.away.id) || (isVuelta && m.hId === ms.away.id && m.aId === ms.home.id))) {
-             if (isVuelta) {
-               // En la vuelta ms.home es m.aId y ms.away es m.hId
-               sh = ms.scoreA; // goles de m.hId en la vuelta
-               sa = ms.scoreH; // goles de m.aId en la vuelta
-               if (ms.penalties) {
-                 penH = ms.penalties.scoreA; // penaltis de m.hId
-                 penA = ms.penalties.scoreH; // penaltis de m.aId
-               }
-             } else {
-               sh = ms.scoreH;
-               sa = ms.scoreA;
-               if (ms.penalties) {
-                 penH = ms.penalties.scoreH;
-                 penA = ms.penalties.scoreA;
-               }
-             }
+          let sh, sa, penH, penA;
+          if (ms && m.hId === ms.home.id && m.aId === ms.away.id) {
+             sh = ms.scoreH; sa = ms.scoreA; penH = ms.penalties?.scoreH; penA = ms.penalties?.scoreA;
+          } else if (ms && isVuelta && m.hId === ms.away.id && m.aId === ms.home.id) {
+             sh = ms.scoreA; sa = ms.scoreH; penH = ms.penalties?.scoreA; penA = ms.penalties?.scoreH;
           } else {
              const h = currentComp.teams.find(t => t.id === (isVuelta ? m.aId : m.hId));
              const a = currentComp.teams.find(t => t.id === (isVuelta ? m.hId : m.aId));
              const { sh: simH, sa: simA } = simMatchGoals(h?.opp, h?.att, a?.def, a?.opp, a?.att, h?.def);
-             if (isVuelta) {
-               sh = simA; // goles de m.hId
-               sa = simH; // goles de m.aId
-             } else {
-               sh = simH;
-               sa = simA;
-             }
-             const isDraw = (isTwoLegged && isVuelta && phase !== 'Final')
-               ? (Number(m.sh || 0) + sh === Number(m.sa || 0) + sa)
-               : (sh === sa);
-
+             if (isVuelta) { sh = simA; sa = simH; } else { sh = simH; sa = simA; }
+             const isDraw = (isTwoLegged && isVuelta && phase !== 'Final') ? (m.sh + sh === m.sa + sa) : (sh === sa);
              if (isDraw && (!isTwoLegged || isVuelta || phase === 'Final')) {
                 const penShootout = simPenaltyShootout(h?.att || 1, a?.def || 1, a?.att || 1, h?.def || 1);
                 penH = isVuelta ? penShootout.scoreA : penShootout.scoreH;
                 penA = isVuelta ? penShootout.scoreH : penShootout.scoreA;
              }
           }
-
-          if (isVuelta) {
-            m.sh2 = sh;
-            m.sa2 = sa;
-          } else {
-            m.sh = sh;
-            m.sa = sa;
-          }
-          if (penH !== null && penH !== undefined) {
-            m.penH = penH;
-            m.penA = penA;
-          }
-          allResults.push(isVuelta
-            ? { hId: m.aId, aId: m.hId, sh: m.sa2, sa: m.sh2, penH: m.penA, penA: m.penH }
-            : { hId: m.hId, aId: m.aId, sh: m.sh, sa: m.sa, penH: m.penH, penA: m.penA }
-          );
+          if (isVuelta) { m.sh2 = sh; m.sa2 = sa; } else { m.sh = sh; m.sa = sa; }
+          if (penH !== undefined) { m.penH = penH; m.penA = penA; }
+          allResults.push(isVuelta ? { hId: m.aId, aId: m.hId, sh: sa, sa: sh, penH: penA, penA: penH } : { hId: m.hId, aId: m.aId, sh, sa, penH, penA });
        });
 
        let nextPhase = phase, showWinner = false;
        if (!isTwoLegged || isVuelta || phase === 'Final') {
           const winners = matchesToProcess.map(m => {
-             const tH = isTwoLegged && phase !== 'Final' ? (Number(m.sh || 0) + Number(m.sh2 || 0)) : Number(m.sh || 0);
-             const tA = isTwoLegged && phase !== 'Final' ? (Number(m.sa || 0) + Number(m.sa2 || 0)) : Number(m.sa || 0);
-             if (tH > tA) return m.hId;
-             if (tA > tH) return m.aId;
-             if (Number(m.penH || 0) > Number(m.penA || 0)) return m.hId;
-             if (Number(m.penA || 0) > Number(m.penH || 0)) return m.aId;
-             return (Math.random() < 0.5 ? m.hId : m.aId);
+             const tH = isTwoLegged && phase!=='Final' ? m.sh+m.sh2 : m.sh; const tA = isTwoLegged && phase!=='Final' ? m.sa+m.sa2 : m.sa;
+             if(tH>tA) return m.hId; if(tA>tH) return m.aId; return m.penH>m.penA ? m.hId : m.aId;
           });
-
           if (phase === 'Dieciseisavos') {
             if (cId === 'C3' || currentComp.bracket?.Playoffs) {
               nextPhase = 'Playoffs';
@@ -7535,26 +7138,8 @@ function DiceFootballApp() {
                 aId: winners[8 + i] ?? null,
                 sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
               }));
-              if (cId === 'C3') {
-                const synced = resolveChampionsAndSyncEuropa(comps, { active: career?.active, team: careerTeam });
-                if (synced['C1']) {
-                  updateCompById('C1', synced['C1']);
-                }
-                if (synced['C3']?.teams?.length) {
-                  currentComp.teams = synced['C3'].teams;
-                }
-              }
             } else {
               nextPhase = 'Octavos';
-              if (cId === 'C3') {
-                const synced = resolveChampionsAndSyncEuropa(comps, { active: career?.active, team: careerTeam });
-                if (synced['C1']) {
-                  updateCompById('C1', synced['C1']);
-                }
-                if (synced['C3']?.teams?.length) {
-                  currentComp.teams = synced['C3'].teams;
-                }
-              }
               newBracket.Octavos = Array(8).fill(0).map((_, i) => ({
                 id: 'O' + (i + 1),
                 hId: newBracket.Octavos?.[i]?.hId ?? currentComp.teams?.[32 + i]?.id ?? (33 + i),
@@ -7583,16 +7168,16 @@ function DiceFootballApp() {
             nextPhase = 'Cuartos';
             newBracket.Cuartos = Array(4).fill(0).map((_, i) => ({
               id: 'Q' + (i + 1),
-              hId: winners[i * 2] ?? currentComp.teams?.[i * 2]?.id ?? (1 + i * 2),
-              aId: winners[i * 2 + 1] ?? currentComp.teams?.[i * 2 + 1]?.id ?? (2 + i * 2),
+              hId: winners[i * 2] ?? currentComp.teams?.[i * 2]?.id ?? 0,
+              aId: winners[i * 2 + 1] ?? currentComp.teams?.[i * 2 + 1]?.id ?? 1,
               sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
             }));
           } else if (phase === 'Cuartos') {
             nextPhase = 'Semis';
             newBracket.Semis = Array(2).fill(0).map((_, i) => ({
               id: 'S' + (i + 1),
-              hId: winners[i * 2] ?? currentComp.teams?.[i * 2]?.id ?? (1 + i * 2),
-              aId: winners[i * 2 + 1] ?? currentComp.teams?.[i * 2 + 1]?.id ?? (2 + i * 2),
+              hId: winners[i * 2] ?? currentComp.teams?.[i * 2]?.id ?? 0,
+              aId: winners[i * 2 + 1] ?? currentComp.teams?.[i * 2 + 1]?.id ?? 1,
               sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
             }));
           } else if (phase === 'Semis') {
@@ -7602,15 +7187,15 @@ function DiceFootballApp() {
             });
             newBracket.Final = [{
               id: 'F1',
-              hId: winners[0] ?? currentComp.teams?.[0]?.id ?? 1,
-              aId: winners[1] ?? currentComp.teams?.[1]?.id ?? 2,
+              hId: winners[0] ?? currentComp.teams?.[0]?.id ?? 0,
+              aId: winners[1] ?? currentComp.teams?.[1]?.id ?? 1,
               sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
             }];
             if (isWC) {
               newBracket.TercerPuesto = [{
                 id: 'TP1',
-                hId: losers[0] ?? currentComp.teams?.[2]?.id ?? 3,
-                aId: losers[1] ?? currentComp.teams?.[3]?.id ?? 4,
+                hId: losers[0] ?? currentComp.teams?.[2]?.id ?? 0,
+                aId: losers[1] ?? currentComp.teams?.[3]?.id ?? 1,
                 sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
               }];
               nextPhase = 'TercerPuesto';
@@ -7629,44 +7214,18 @@ function DiceFootballApp() {
           : phase === 'TercerPuesto'
           ? 'Tercer Puesto'
           : (phase + (isTwoLegged ? (isVuelta ? ' (Vuelta)' : ' (Ida)') : ''));
-        const updatedComp = {
-          teams: currentComp.teams,
-          history: [{ day: dayLabel, results: allResults }, ...currentComp.history],
-          matchday: currentComp.matchday + 1,
-          phase: nextPhase,
-          bracket: newBracket,
-          showWinner
-        };
+        const updatedComp = { history: [{ day: dayLabel, results: allResults }, ...currentComp.history], matchday: currentComp.matchday + 1, phase: nextPhase, bracket: newBracket, showWinner };
+        updateCompById(cId, updatedComp);
 
-        setComps(prev => {
-          let nextComps = { ...prev, [cId]: { ...prev[cId], ...updatedComp } };
-
-          if (cId === 'C3') {
-            let clComp = nextComps['C1'];
-            if (clComp && clComp.phase !== 'Terminado' && !clComp.showWinner) {
-              if (clComp.phase === 'groups') {
-                if (nextPhase === 'Octavos' || updatedComp.phase === 'Octavos' || phase === 'Playoffs') {
-                  // C3 entra o está en Octavos: Champions League completa sus 6 jornadas obligatoriamente y se sincroniza
-                  nextComps = resolveChampionsAndSyncEuropa(nextComps, { active: career?.active, team: careerTeam });
-                } else if (phase === 'Dieciseisavos') {
-                  // Cada partido de dieciseisavos avanza 2 jornadas de C1
-                  nextComps['C1'] = simulateCompSteps(clComp, 'C1', 2);
-                }
-              } else if (['Octavos', 'Cuartos', 'Semis', 'Final'].includes(phase) && (!isTwoLegged || isVuelta || phase === 'Final')) {
-                // Avance simultáneo en eliminatorias
-                nextComps['C1'] = simulateCompSteps(clComp, 'C1', 1);
-              }
-            }
-          } else if (cId === 'C1') {
-            let elComp = nextComps['C3'];
-            if (elComp && elComp.phase !== 'Terminado' && !elComp.showWinner) {
-              if (['Octavos', 'Cuartos', 'Semis', 'Final'].includes(phase) && (!isTwoLegged || isVuelta || phase === 'Final')) {
-                nextComps['C3'] = simulateCompSteps(elComp, 'C3', 1);
-              }
-            }
+        // Sincronizar ronda equivalente de Europa League al procesar Champions League
+        if (cId === 'C1' && !targetCompId && !ms) {
+          const elComp = comps['C3'];
+          if (elComp && elComp.phase !== 'Terminado' && !elComp.showWinner) {
+            setTimeout(() => {
+              processCupRound(null, 'C3', true);
+            }, 50);
           }
-          return nextComps;
-        });
+        }
         if (showWinner) {
           const final = newBracket?.Final?.[0] || newBracket?.Final;
           let clWinner = null;
