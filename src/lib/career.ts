@@ -172,15 +172,13 @@ const OBJECTIVES = {
   ],
   2: [
     { from: 1, to: 3, rep: 25, pe: 60, note: 'Ascenso directo a 1ª División (Top 3)', promote: true },
-    { from: 4, to: 8, rep: 15, pe: 35, note: 'Clasificar a Europa League (Top 8)' },
-    { from: 9, to: 12, rep: 5, pe: 20, note: 'Objetivo cumplido' },
-    { from: 13, to: 17, rep: -10, pe: 5, note: 'Temporada decepcionante' },
+    { from: 4, to: 10, rep: 5, pe: 20, note: 'Objetivo cumplido' },
+    { from: 11, to: 17, rep: -10, pe: 5, note: 'Temporada decepcionante' },
     { from: 18, to: 20, rep: -20, pe: 0, note: 'Zona de descenso; despido inminente', riskFire: true }
   ],
   3: [
     { from: 1, to: 4, rep: 20, pe: 50, note: 'Gran temporada (Puestos Champions)', promote: true },
-    { from: 5, to: 8, rep: 12, pe: 30, note: 'Clasificar a Europa League (Top 8)' },
-    { from: 9, to: 12, rep: 5, pe: 20, note: 'Objetivo cumplido' },
+    { from: 5, to: 12, rep: 5, pe: 20, note: 'Objetivo cumplido' },
     { from: 13, to: 17, rep: -15, pe: 0, note: 'Temporada preocupante' },
     { from: 18, to: 20, rep: -25, pe: 0, note: 'Descenso a 2ª División; despido seguro', fire: true }
   ],
@@ -282,7 +280,7 @@ export const getContractObjectivesForTeam = ({
       leaguePriority = 'Muy Alta';
       leagueTargetPos = 4;
     } else if (tTier === 2) {
-      leagueLabel = 'Clasificar a puestos de Europa League (Top 6 o Top 8)';
+      leagueLabel = 'Pelear puestos europeos / Mitad alta (Top 6)';
       leaguePriority = 'Alta';
       leagueTargetPos = 6;
     } else {
@@ -375,9 +373,9 @@ export const seasonObjectives = ({
       posPriority = 'Muy Alta';
       posLabel = 'Clasificar a la UEFA Champions League (Top 4)';
     } else if (tier === 2) {
-      posTarget = Math.max(6, Math.min(8, exp <= 6 ? 6 : 8));
+      posTarget = Math.max(4, Math.min(8, exp - 1));
       posPriority = 'Alta';
-      posLabel = `Clasificar a puestos de Europa League (Top ${posTarget})`;
+      posLabel = `Pelear puestos europeos / Mitad alta (Top ${posTarget})`;
     } else {
       posTarget = Math.min(size - 3, Math.max(12, exp));
       posPriority = 'Crítica';
@@ -918,7 +916,7 @@ export const buildOffers = ({
     } else if (c.div === 1) {
       if (clubPos === 1) standingStatus = '🏆 Lucha por el Título';
       else if (clubPos <= 4) standingStatus = '⭐ Zona Champions';
-      else if (clubPos <= 8) standingStatus = '🟠 Zona Europa League';
+      else if (clubPos <= 6) standingStatus = '🌍 Zona Europea';
       else if (clubPos >= totalTeams - 2) standingStatus = '⚠️ Zona de Descenso';
     } else {
       if (clubPos <= 3) standingStatus = '🚀 Zona de Ascenso';
@@ -932,9 +930,8 @@ export const buildOffers = ({
 
     if (kind !== 'fired') {
       if (c.tier >= 4) requiredObjective = 'Conquistar el título de liga y pelear la Champions';
-      else if (c.tier === 3) requiredObjective = 'Clasificar a UEFA Champions League (Top 4)';
-      else if (c.div === 1 && c.tier === 2) requiredObjective = 'Clasificar a puestos de Europa League (Top 6 o Top 8)';
-      else if (c.div === 2) requiredObjective = 'Lograr el ascenso directo a 1ª División';
+      else if (c.tier === 3) requiredObjective = 'Clasificar a competiciones europeas (Top 4)';
+      else if (c.div === 2 || c.tier === 2) requiredObjective = 'Lograr el ascenso directo a 1ª División';
     }
 
     const contractObjectives = getContractObjectivesForTeam({
@@ -1140,8 +1137,7 @@ export const getMarketVacancies = (comps = {}, career = {}, currentPosition = 9)
 
         let directiveQuote = 'Estabilizar el club';
         if (tier >= 4) directiveQuote = 'Conquistar el título y reinar en Europa';
-        else if (tier === 3) directiveQuote = 'Clasificar a UEFA Champions League (Top 4)';
-        else if (div === 1 && tier === 2) directiveQuote = 'Clasificar a puestos de Europa League (Top 6 o Top 8)';
+        else if (tier === 3) directiveQuote = 'Clasificar a competiciones europeas (Top 4)';
         else if (div === 2 && pos <= 4) directiveQuote = 'Lograr el ascenso directo a 1ª División';
         else if (isStruggling) directiveQuote = 'Estabilizar el club y eludir el descenso';
 
@@ -1153,7 +1149,7 @@ export const getMarketVacancies = (comps = {}, career = {}, currentPosition = 9)
         if (div === 1) {
           if (pos === 1) standingStatus = '🏆 Lucha por el Título';
           else if (pos <= 4) standingStatus = '⭐ Zona Champions';
-          else if (pos <= 8) standingStatus = '🟠 Zona Europa League';
+          else if (pos <= 6) standingStatus = '🌍 Zona Europea';
           else if (pos >= total - 2) standingStatus = '⚠️ Zona de Descenso';
         } else {
           if (pos <= 3) standingStatus = '🚀 Zona de Ascenso';
@@ -1449,552 +1445,143 @@ export const simPenaltyShootout = (
   return { scoreH: spH, scoreA: spA };
 };
 
-export type Slot = "FINDE" | "MITAD" | "UNICO"; // UNICO para finales entre semana sin choque de slot
-
-export type Competicion = "LIGA" | "COPA_LOCAL" | "CHAMPIONS" | "EUROPA_LEAGUE" | "SELECCIONES";
-
-export interface Fixture {
-  id: string;
-  competicion: Competicion;
-  ronda: string;          // ej: "Jornada 5", "Octavos IDA", "Final"
-  slot: Slot;
-  esPartido: boolean;     // false para milestones (sorteo, cierre de mercado, fin de liga, etc.)
-  title?: string;
-  desc?: string;
-}
-
-export interface SemanaCalendario {
-  weekIndex: number;      // 1-42
-  mes: string;
-  fixtures: Fixture[];    // array, NUNCA objeto fijo {finde, mitad}
-}
-
-export const CALENDARIO_TEMPORADA: SemanaCalendario[] = [
-  {
-    weekIndex: 1,
-    mes: 'Agosto',
-    fixtures: [
-      { id: 'w1-pre-finde', competicion: 'LIGA', ronda: 'Pretemporada', slot: 'FINDE', esPartido: false, title: 'Pretemporada', desc: 'Arranque de entrenamientos y puesta a punto' },
-      { id: 'w1-pre-mitad', competicion: 'LIGA', ronda: 'Torneo amistoso de invitación', slot: 'MITAD', esPartido: false, title: 'Torneo amistoso de invitación', desc: 'Partidos de preparación' }
-    ]
-  },
-  {
-    weekIndex: 2,
-    mes: 'Agosto',
-    fixtures: [
-      { id: 'w2-pre-finde', competicion: 'LIGA', ronda: 'Pretemporada', slot: 'FINDE', esPartido: false, title: 'Pretemporada', desc: 'Puesta a punto final antes del inicio de Liga' },
-      { id: 'w2-supercopa', competicion: 'CHAMPIONS', ronda: 'Supercopa de Europa', slot: 'MITAD', esPartido: false, title: 'Final Supercopa de Europa (si aplica)', desc: 'Duelo continental entre campeones europeos' }
-    ]
-  },
-  {
-    weekIndex: 3,
-    mes: 'Agosto',
-    fixtures: [
-      { id: 'w3-liga-j1', competicion: 'LIGA', ronda: 'Jornada 1', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 1' }
-    ]
-  },
-  {
-    weekIndex: 4,
-    mes: 'Agosto',
-    fixtures: [
-      { id: 'w4-liga-j2', competicion: 'LIGA', ronda: 'Jornada 2', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 2' },
-      { id: 'w4-sorteo-uefa', competicion: 'CHAMPIONS', ronda: 'Sorteo Fase de Grupos UEFA', slot: 'MITAD', esPartido: false, title: 'Sorteo Fase de Grupos UEFA', desc: 'Sorteo oficial de fase de grupos Champions y Europa League' }
-    ]
-  },
-  {
-    weekIndex: 5,
-    mes: 'Septiembre',
-    fixtures: [
-      { id: 'w5-liga-j3', competicion: 'LIGA', ronda: 'Jornada 3', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 3' },
-      { id: 'w5-fifa', competicion: 'SELECCIONES', ronda: 'Parón de Selecciones', slot: 'MITAD', esPartido: false, title: 'Parón de Selecciones', desc: 'Ventana FIFA internacional' }
-    ]
-  },
-  {
-    weekIndex: 6,
-    mes: 'Septiembre',
-    fixtures: [
-      { id: 'w6-liga-j4', competicion: 'LIGA', ronda: 'Jornada 4', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 4' }
-    ]
-  },
-  {
-    weekIndex: 7,
-    mes: 'Septiembre',
-    fixtures: [
-      { id: 'w7-liga-j5', competicion: 'LIGA', ronda: 'Jornada 5', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 5' },
-      { id: 'w7-cl-j1', competicion: 'CHAMPIONS', ronda: 'CL/EL Fase de Grupos — J1', slot: 'MITAD', esPartido: true, title: 'Champions League · Grupos J1' },
-      { id: 'w7-el-j1', competicion: 'EUROPA_LEAGUE', ronda: 'CL/EL Fase de Grupos — J1', slot: 'MITAD', esPartido: true, title: 'Europa League · Grupos J1' }
-    ]
-  },
-  {
-    weekIndex: 8,
-    mes: 'Septiembre',
-    fixtures: [
-      { id: 'w8-liga-j6', competicion: 'LIGA', ronda: 'Jornada 6', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 6' }
-    ]
-  },
-  {
-    weekIndex: 9,
-    mes: 'Octubre',
-    fixtures: [
-      { id: 'w9-liga-j7', competicion: 'LIGA', ronda: 'Jornada 7', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 7' },
-      { id: 'w9-cl-j2', competicion: 'CHAMPIONS', ronda: 'CL/EL Fase de Grupos — J2', slot: 'MITAD', esPartido: true, title: 'Champions League · Grupos J2' },
-      { id: 'w9-el-j2', competicion: 'EUROPA_LEAGUE', ronda: 'CL/EL Fase de Grupos — J2', slot: 'MITAD', esPartido: true, title: 'Europa League · Grupos J2' }
-    ]
-  },
-  {
-    weekIndex: 10,
-    mes: 'Octubre',
-    fixtures: [
-      { id: 'w10-liga-j8', competicion: 'LIGA', ronda: 'Jornada 8', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 8' }
-    ]
-  },
-  {
-    weekIndex: 11,
-    mes: 'Octubre',
-    fixtures: [
-      { id: 'w11-liga-j9', competicion: 'LIGA', ronda: 'Jornada 9', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 9' },
-      { id: 'w11-cl-j3', competicion: 'CHAMPIONS', ronda: 'CL/EL Fase de Grupos — J3', slot: 'MITAD', esPartido: true, title: 'Champions League · Grupos J3' },
-      { id: 'w11-el-j3', competicion: 'EUROPA_LEAGUE', ronda: 'CL/EL Fase de Grupos — J3', slot: 'MITAD', esPartido: true, title: 'Europa League · Grupos J3' }
-    ]
-  },
-  {
-    weekIndex: 12,
-    mes: 'Octubre',
-    fixtures: [
-      { id: 'w12-liga-j10', competicion: 'LIGA', ronda: 'Jornada 10', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 10' }
-    ]
-  },
-  {
-    weekIndex: 13,
-    mes: 'Noviembre',
-    fixtures: [
-      { id: 'w13-liga-j11', competicion: 'LIGA', ronda: 'Jornada 11', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 11' },
-      { id: 'w13-fifa', competicion: 'SELECCIONES', ronda: 'Parón de Selecciones', slot: 'MITAD', esPartido: false, title: 'Parón de Selecciones', desc: 'Ventana FIFA internacional' }
-    ]
-  },
-  {
-    weekIndex: 14,
-    mes: 'Noviembre',
-    fixtures: [
-      { id: 'w14-liga-j12', competicion: 'LIGA', ronda: 'Jornada 12', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 12' },
-      { id: 'w14-cl-j4', competicion: 'CHAMPIONS', ronda: 'CL/EL Fase de Grupos — J4', slot: 'MITAD', esPartido: true, title: 'Champions League · Grupos J4' },
-      { id: 'w14-el-j4', competicion: 'EUROPA_LEAGUE', ronda: 'CL/EL Fase de Grupos — J4', slot: 'MITAD', esPartido: true, title: 'Europa League · Grupos J4' }
-    ]
-  },
-  {
-    weekIndex: 15,
-    mes: 'Noviembre',
-    fixtures: [
-      { id: 'w15-liga-j13', competicion: 'LIGA', ronda: 'Jornada 13', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 13' }
-    ]
-  },
-  {
-    weekIndex: 16,
-    mes: 'Noviembre',
-    fixtures: [
-      { id: 'w16-liga-j14', competicion: 'LIGA', ronda: 'Jornada 14', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 14' },
-      { id: 'w16-cl-j5', competicion: 'CHAMPIONS', ronda: 'CL/EL Fase de Grupos — J5', slot: 'MITAD', esPartido: true, title: 'Champions League · Grupos J5' },
-      { id: 'w16-el-j5', competicion: 'EUROPA_LEAGUE', ronda: 'CL/EL Fase de Grupos — J5', slot: 'MITAD', esPartido: true, title: 'Europa League · Grupos J5' }
-    ]
-  },
-  {
-    weekIndex: 17,
-    mes: 'Diciembre',
-    fixtures: [
-      { id: 'w17-liga-j15', competicion: 'LIGA', ronda: 'Jornada 15', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 15' }
-    ]
-  },
-  {
-    weekIndex: 18,
-    mes: 'Diciembre',
-    fixtures: [
-      { id: 'w18-liga-j16', competicion: 'LIGA', ronda: 'Jornada 16', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 16' },
-      { id: 'w18-cl-j6', competicion: 'CHAMPIONS', ronda: 'CL/EL Fase de Grupos — J6 (cierre)', slot: 'MITAD', esPartido: true, title: 'Champions League · Grupos J6 (Cierre)' },
-      { id: 'w18-el-j6', competicion: 'EUROPA_LEAGUE', ronda: 'CL/EL Fase de Grupos — J6 (cierre)', slot: 'MITAD', esPartido: true, title: 'Europa League · Grupos J6 (Cierre)' }
-    ]
-  },
-  {
-    weekIndex: 19,
-    mes: 'Diciembre',
-    fixtures: [
-      { id: 'w19-liga-j17', competicion: 'LIGA', ronda: 'Jornada 17', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 17' },
-      { id: 'w19-copa-r1', competicion: 'COPA_LOCAL', ronda: 'Copa Local — 1ª Ronda', slot: 'MITAD', esPartido: true, title: 'Copa Local · 1ª Ronda' }
-    ]
-  },
-  {
-    weekIndex: 20,
-    mes: 'Diciembre',
-    fixtures: [
-      { id: 'w20-liga-j18', competicion: 'LIGA', ronda: 'Jornada 18', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 18' }
-    ]
-  },
-  {
-    weekIndex: 21,
-    mes: 'Enero',
-    fixtures: [
-      { id: 'w21-liga-j19', competicion: 'LIGA', ronda: 'Jornada 19', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 19' },
-      { id: 'w21-el-16-ida', competicion: 'EUROPA_LEAGUE', ronda: 'EL — Dieciseisavos IDA', slot: 'MITAD', esPartido: true, title: 'Europa League · Dieciseisavos (Ida)' }
-    ]
-  },
-  {
-    weekIndex: 22,
-    mes: 'Enero',
-    fixtures: [
-      { id: 'w22-liga-j20', competicion: 'LIGA', ronda: 'Jornada 20', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 20' },
-      { id: 'w22-el-16-vta', competicion: 'EUROPA_LEAGUE', ronda: 'EL — Dieciseisavos VUELTA', slot: 'MITAD', esPartido: true, title: 'Europa League · Dieciseisavos (Vuelta)' },
-      { id: 'w22-copa-8vos', competicion: 'COPA_LOCAL', ronda: 'Copa Local Octavos', slot: 'MITAD', esPartido: true, title: 'Copa Local · Octavos de Final' }
-    ]
-  },
-  {
-    weekIndex: 23,
-    mes: 'Enero',
-    fixtures: [
-      { id: 'w23-liga-j21', competicion: 'LIGA', ronda: 'Jornada 21', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 21' },
-      { id: 'w23-copa-4tos', competicion: 'COPA_LOCAL', ronda: 'Copa Local — Cuartos', slot: 'MITAD', esPartido: true, title: 'Copa Local · Cuartos de Final' }
-    ]
-  },
-  {
-    weekIndex: 24,
-    mes: 'Enero',
-    fixtures: [
-      { id: 'w24-liga-j22', competicion: 'LIGA', ronda: 'Jornada 22', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 22' },
-      { id: 'w24-cierre-mercado', competicion: 'LIGA', ronda: 'Cierre de Mercado', slot: 'MITAD', esPartido: false, title: 'Cierre de Mercado (31 enero)', desc: 'Cierre oficial del mercado de fichajes de invierno' }
-    ]
-  },
-  {
-    weekIndex: 25,
-    mes: 'Febrero',
-    fixtures: [
-      { id: 'w25-liga-j23', competicion: 'LIGA', ronda: 'Jornada 23', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 23' },
-      { id: 'w25-cl-8vos-ida', competicion: 'CHAMPIONS', ronda: 'CL Octavos IDA', slot: 'MITAD', esPartido: true, title: 'Champions League · Octavos (Ida)' },
-      { id: 'w25-el-8vos-ida', competicion: 'EUROPA_LEAGUE', ronda: 'EL Octavos IDA', slot: 'MITAD', esPartido: true, title: 'Europa League · Octavos (Ida)' }
-    ]
-  },
-  {
-    weekIndex: 26,
-    mes: 'Febrero',
-    fixtures: [
-      { id: 'w26-liga-j24', competicion: 'LIGA', ronda: 'Jornada 24', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 24' },
-      { id: 'w26-copa-semi-ida', competicion: 'COPA_LOCAL', ronda: 'Copa Local — Semifinal Ida', slot: 'MITAD', esPartido: true, title: 'Copa Local · Semifinal (Ida)' }
-    ]
-  },
-  {
-    weekIndex: 27,
-    mes: 'Febrero',
-    fixtures: [
-      { id: 'w27-liga-j25', competicion: 'LIGA', ronda: 'Jornada 25', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 25' },
-      { id: 'w27-cl-8vos-vta', competicion: 'CHAMPIONS', ronda: 'CL Octavos VUELTA', slot: 'MITAD', esPartido: true, title: 'Champions League · Octavos (Vuelta)' },
-      { id: 'w27-el-8vos-vta', competicion: 'EUROPA_LEAGUE', ronda: 'EL Octavos VUELTA', slot: 'MITAD', esPartido: true, title: 'Europa League · Octavos (Vuelta)' }
-    ]
-  },
-  {
-    weekIndex: 28,
-    mes: 'Febrero',
-    fixtures: [
-      { id: 'w28-liga-j26', competicion: 'LIGA', ronda: 'Jornada 26', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 26' },
-      { id: 'w28-copa-semi-vta', competicion: 'COPA_LOCAL', ronda: 'Copa Local — Semifinal Vuelta', slot: 'MITAD', esPartido: true, title: 'Copa Local · Semifinal (Vuelta)' }
-    ]
-  },
-  {
-    weekIndex: 29,
-    mes: 'Marzo',
-    fixtures: [
-      { id: 'w29-liga-j27', competicion: 'LIGA', ronda: 'Jornada 27', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 27' }
-    ]
-  },
-  {
-    weekIndex: 30,
-    mes: 'Marzo',
-    fixtures: [
-      { id: 'w30-liga-j28', competicion: 'LIGA', ronda: 'Jornada 28', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 28' },
-      { id: 'w30-cl-4tos-ida', competicion: 'CHAMPIONS', ronda: 'CL Cuartos IDA', slot: 'MITAD', esPartido: true, title: 'Champions League · Cuartos (Ida)' },
-      { id: 'w30-el-4tos-ida', competicion: 'EUROPA_LEAGUE', ronda: 'EL Cuartos IDA', slot: 'MITAD', esPartido: true, title: 'Europa League · Cuartos (Ida)' }
-    ]
-  },
-  {
-    weekIndex: 31,
-    mes: 'Marzo',
-    fixtures: [
-      { id: 'w31-liga-j29', competicion: 'LIGA', ronda: 'Jornada 29', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 29' },
-      { id: 'w31-fifa', competicion: 'SELECCIONES', ronda: 'Parón de Selecciones', slot: 'MITAD', esPartido: false, title: 'Parón de Selecciones', desc: 'Última ventana FIFA antes del tramo final' }
-    ]
-  },
-  {
-    weekIndex: 32,
-    mes: 'Marzo',
-    fixtures: [
-      { id: 'w32-liga-j30', competicion: 'LIGA', ronda: 'Jornada 30', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 30' },
-      { id: 'w32-cl-4tos-vta', competicion: 'CHAMPIONS', ronda: 'CL Cuartos VUELTA', slot: 'MITAD', esPartido: true, title: 'Champions League · Cuartos (Vuelta)' },
-      { id: 'w32-el-4tos-vta', competicion: 'EUROPA_LEAGUE', ronda: 'EL Cuartos VUELTA', slot: 'MITAD', esPartido: true, title: 'Europa League · Cuartos (Vuelta)' }
-    ]
-  },
-  {
-    weekIndex: 33,
-    mes: 'Abril',
-    fixtures: [
-      { id: 'w33-liga-j31', competicion: 'LIGA', ronda: 'Jornada 31', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 31' }
-    ]
-  },
-  {
-    weekIndex: 34,
-    mes: 'Abril',
-    fixtures: [
-      { id: 'w34-liga-j32', competicion: 'LIGA', ronda: 'Jornada 32', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 32' },
-      { id: 'w34-cl-semi-ida', competicion: 'CHAMPIONS', ronda: 'CL Semifinal IDA', slot: 'MITAD', esPartido: true, title: 'Champions League · Semifinal (Ida)' },
-      { id: 'w34-el-semi-ida', competicion: 'EUROPA_LEAGUE', ronda: 'EL Semifinal IDA', slot: 'MITAD', esPartido: true, title: 'Europa League · Semifinal (Ida)' }
-    ]
-  },
-  {
-    weekIndex: 35,
-    mes: 'Abril',
-    fixtures: [
-      { id: 'w35-liga-j33', competicion: 'LIGA', ronda: 'Jornada 33', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 33' }
-    ]
-  },
-  {
-    weekIndex: 36,
-    mes: 'Abril',
-    fixtures: [
-      { id: 'w36-liga-j34', competicion: 'LIGA', ronda: 'Jornada 34', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 34' },
-      { id: 'w36-cl-semi-vta', competicion: 'CHAMPIONS', ronda: 'CL Semifinal VUELTA', slot: 'MITAD', esPartido: true, title: 'Champions League · Semifinal (Vuelta)' },
-      { id: 'w36-el-semi-vta', competicion: 'EUROPA_LEAGUE', ronda: 'EL Semifinal VUELTA', slot: 'MITAD', esPartido: true, title: 'Europa League · Semifinal (Vuelta)' }
-    ]
-  },
-  {
-    weekIndex: 37,
-    mes: 'Mayo',
-    fixtures: [
-      { id: 'w37-liga-j35', competicion: 'LIGA', ronda: 'Jornada 35', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 35' },
-      { id: 'w37-copa-final', competicion: 'COPA_LOCAL', ronda: 'Final Copa Local', slot: 'UNICO', esPartido: true, title: 'Gran Final · Copa Local' }
-    ]
-  },
-  {
-    weekIndex: 38,
-    mes: 'Mayo',
-    fixtures: [
-      { id: 'w38-liga-j36', competicion: 'LIGA', ronda: 'Jornada 36', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 36' }
-    ]
-  },
-  {
-    weekIndex: 39,
-    mes: 'Mayo',
-    fixtures: [
-      { id: 'w39-liga-j37', competicion: 'LIGA', ronda: 'Jornada 37', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 37' },
-      { id: 'w39-el-final', competicion: 'EUROPA_LEAGUE', ronda: 'Final Europa League', slot: 'UNICO', esPartido: true, title: 'Gran Final · UEFA Europa League' }
-    ]
-  },
-  {
-    weekIndex: 40,
-    mes: 'Mayo',
-    fixtures: [
-      { id: 'w40-liga-j38', competicion: 'LIGA', ronda: 'Jornada 38', slot: 'FINDE', esPartido: true, title: 'Liga · Jornada 38' },
-      { id: 'w40-fin-liga', competicion: 'LIGA', ronda: 'Fin de Liga Doméstica', slot: 'FINDE', esPartido: false, title: 'Fin de Liga Doméstica', desc: 'Conclusión oficial del campeonato regular de Liga' }
-    ]
-  },
-  {
-    weekIndex: 41,
-    mes: 'Junio',
-    fixtures: [
-      { id: 'w41-cl-final', competicion: 'CHAMPIONS', ronda: 'Final Champions League', slot: 'UNICO', esPartido: true, title: 'Gran Final · UEFA Champions League' }
-    ]
-  },
-  {
-    weekIndex: 42,
-    mes: 'Junio',
-    fixtures: [
-      { id: 'w42-cierre-financiero', competicion: 'LIGA', ronda: 'Cierre financiero / Renovación de contratos', slot: 'UNICO', esPartido: false, title: 'Cierre Financiero y Renovaciones', desc: 'Balance de temporada, balance económico y renovación de contratos' }
-    ]
-  }
-];
-
-// Devuelve el calendario de 42 semanas adaptado al club:
-// Un club solo participa en Champions League o Europa League, nunca en ambas.
-export const getClubSeasonCalendar = (
-  totalLeagueMatchdays = 38,
-  userEuropeanComp: 'CHAMPIONS' | 'EUROPA_LEAGUE' | null = 'CHAMPIONS'
-): SemanaCalendario[] => {
-  return CALENDARIO_TEMPORADA.map(sem => {
-    // Filtrar fixture continental según la competición europea asignada al club
-    const filteredFixtures = sem.fixtures.filter(fix => {
-      if (userEuropeanComp === 'CHAMPIONS' && fix.competicion === 'EUROPA_LEAGUE') {
-        return false;
-      }
-      if (userEuropeanComp === 'EUROPA_LEAGUE' && fix.competicion === 'CHAMPIONS') {
-        return false;
-      }
-      // Si la liga tiene menos jornadas (ej: 34 en vez de 38), omitir jornadas excedentes
-      if (fix.competicion === 'LIGA' && fix.esPartido) {
-        const match = fix.ronda.match(/Jornada\s*(\d+)/i);
-        if (match && parseInt(match[1], 10) > (totalLeagueMatchdays || 38)) {
-          return false;
-        }
-      }
-      return true;
-    });
-
-    return {
-      ...sem,
-      fixtures: filteredFixtures
-    };
-  });
-};
-
 export const getSpecialOfficeWeeks = (totalLeagueMatchdays = 38) => {
-  // Retorna las semanas que son hitos o descansos sin partido liguero
+  const totalRounds = Math.max(10, totalLeagueMatchdays || 38);
+  const midPoint = Math.floor(totalRounds / 2); // Ecuador del torneo (ej: J17 en 34, J19 en 38, J21 en 42)
+  const break1 = Math.max(2, Math.min(midPoint - 4, Math.round(totalRounds * 0.16))); // J5-J6 en 38
+  const break2 = Math.max(break1 + 2, Math.min(midPoint - 1, Math.round(totalRounds * 0.35))); // J12-J13 en 38
+  const break3 = Math.max(midPoint + 2, Math.min(totalRounds - 2, Math.round(totalRounds * 0.72))); // J27 en 38, J24 en 34
+
+  const w1 = 1;
+  const wBreak1 = break1 + 2;
+  const wBreak2 = break2 + 3;
+  const wWinter = midPoint + 4;
+  const wBreak3 = break3 + 5;
+
   return [
     {
-      week: 1,
+      week: w1,
       triggerAfterMd: 0,
       title: 'Apertura de Mercado de Verano',
       subtitle: 'Planificación de Temporada y Mercado Laboral',
-      desc: 'Ventana oficial de fichajes y pretemporada antes del arranque de la liga. Momento ideal para postularte a un nuevo banquillo.',
+      desc: 'Ventana oficial de fichajes y contratación de directores técnicos antes del arranque de la liga. Momento ideal para postularte a un nuevo banquillo.',
       isMarket: true
     },
     {
-      week: 2,
-      triggerAfterMd: 0,
-      title: 'Pretemporada y Supercopa',
-      subtitle: 'Puesta a punto final',
-      desc: 'Fase final de preparación y amistosos previos a la Jornada 1.',
-      isMarket: true
-    },
-    {
-      week: 5,
-      triggerAfterMd: 2,
+      week: wBreak1,
+      triggerAfterMd: break1,
       title: 'Parón Internacional · Semana de Oficina',
       subtitle: 'Ventana FIFA de Selecciones',
-      desc: 'Semana de descanso liguero por compromisos internacionales tras la Jornada 2.',
+      desc: `Semana de descanso liguero por compromisos internacionales (tras la Jornada ${break1}). Trabajo de táctica y recuperación física en la ciudad deportiva.`,
       isMarket: false
     },
     {
-      week: 13,
-      triggerAfterMd: 10,
+      week: wBreak2,
+      triggerAfterMd: break2,
       title: 'Parón Internacional · Semana de Oficina',
       subtitle: 'Compromisos Internacionales',
-      desc: 'Ventana FIFA de otoño y trabajo de acondicionamiento físico.',
+      desc: `Parón en las principales ligas europeas (tras la Jornada ${break2}). Sesión de preparación y análisis del rendimiento tras el primer tercio del torneo.`,
       isMarket: false
     },
     {
-      week: 24,
-      triggerAfterMd: 21,
-      title: 'Cierre de Mercado de Invierno',
-      subtitle: 'Ecuador del Campeonato y Fichajes',
-      desc: 'Últimos movimientos del mercado invernal de fichajes (31 de enero).',
+      week: wWinter,
+      triggerAfterMd: midPoint,
+      title: 'Apertura de Mercado de Invierno',
+      subtitle: 'Ecuador del Campeonato y Mercado Laboral',
+      desc: `Concluida la primera vuelta (Jornada ${midPoint} de ${totalRounds}), se abre la ventana oficial de invierno para relevo y contratación de técnicos en crisis o proyectos ambiciosos.`,
       isMarket: true
     },
     {
-      week: 31,
-      triggerAfterMd: 28,
+      week: wBreak3,
+      triggerAfterMd: break3,
       title: 'Parón Internacional · Semana de Oficina',
       subtitle: 'Último Parón Internacional',
-      desc: 'Última ventana FIFA antes de afrontar las jornadas decisivas del campeonato.',
+      desc: `Última ventana FIFA antes de afrontar las jornadas decisivas del campeonato (tras la Jornada ${break3}). Ajustes tácticos y preparación física final.`,
       isMarket: false
-    },
-    {
-      week: 42,
-      triggerAfterMd: totalLeagueMatchdays || 38,
-      title: 'Cierre Financiero y Renovaciones',
-      subtitle: 'Balance de Temporada',
-      desc: 'Conclusión de contratos, balance económico y planificación del próximo curso.',
-      isMarket: true
     }
   ];
 };
 
 export const SPECIAL_OFFICE_WEEKS = getSpecialOfficeWeeks(38);
 
-export const calculateCurrentSeasonWeek = (
-  matchdaysPlayed = 0,
-  completedOfficeWeeks: number[] = [],
-  totalLeagueMatchdays = 38
-) => {
+export const calculateCurrentSeasonWeek = (matchdaysPlayed = 0, completedOfficeWeeks = [], totalLeagueMatchdays = 38) => {
   const completed = Array.isArray(completedOfficeWeeks) ? completedOfficeWeeks : [];
-  const officeWeeks = getSpecialOfficeWeeks(totalLeagueMatchdays).sort((a, b) => a.week - b.week);
-  const totalWeeks = 42;
-
-  // Si hay semanas de oficina de pretemporada o parones sin completar
-  if (matchdaysPlayed === 0) {
-    const w = !completed.includes(1) ? 1 : !completed.includes(2) ? 2 : 3;
-    const isOff = w === 1 || w === 2;
-    const currentSem = CALENDARIO_TEMPORADA.find(s => s.weekIndex === w) || CALENDARIO_TEMPORADA[0];
+  const officeWeeks = getSpecialOfficeWeeks(totalLeagueMatchdays).sort((a, b) => a.triggerAfterMd - b.triggerAfterMd || a.week - b.week);
+  const totalWeeks = (totalLeagueMatchdays || 38) + officeWeeks.length;
+  
+  // 1. Comprobar si hay una semana especial de oficina pendiente que corresponda a las jornadas disputadas
+  // Se busca la primera en orden cronológico donde se haya alcanzado su trigger y no haya sido completada aún
+  const activeOffice = officeWeeks.find(w => matchdaysPlayed >= w.triggerAfterMd && !completed.includes(w.week));
+  if (activeOffice) {
     return {
-      week: w,
-      weekIndex: w,
-      semana: currentSem,
-      isOfficeWeek: isOff,
-      isMarketOpen: true,
-      officeInfo: isOff ? (officeWeeks.find(o => o.week === w) || {
-        week: w,
-        title: currentSem.fixtures[0]?.title || 'Pretemporada',
-        desc: currentSem.fixtures[0]?.desc || 'Pretemporada y planificación',
-        isMarket: true
-      }) : null,
+      week: activeOffice.week,
+      isOfficeWeek: true,
+      isMarketOpen: !!activeOffice.isMarket,
+      officeInfo: activeOffice,
       totalWeeks
     };
   }
 
-  // Si la liga regular terminó
-  if (matchdaysPlayed >= (totalLeagueMatchdays || 38)) {
-    const w = matchdaysPlayed > (totalLeagueMatchdays || 38) ? 42 : 41;
-    const currentSem = CALENDARIO_TEMPORADA.find(s => s.weekIndex === w) || CALENDARIO_TEMPORADA[41];
-    return {
-      week: w,
-      weekIndex: w,
-      semana: currentSem,
-      isOfficeWeek: w === 42,
-      isMarketOpen: true,
-      officeInfo: w === 42 ? {
-        week: 42,
-        title: 'Cierre Financiero y Renovaciones',
-        desc: 'Balance de temporada y renovación de contratos',
-        isMarket: true
-      } : null,
-      totalWeeks
-    };
-  }
+  // 2. Si no es semana de oficina activa, calcular el número de semana de calendario (1 a totalWeeks)
+  let officeOffset = 0;
+  officeWeeks.forEach(ow => {
+    if (completed.includes(ow.week)) {
+      officeOffset += 1;
+    }
+  });
 
-  // Buscar la semana en CALENDARIO_TEMPORADA que corresponde a la siguiente Jornada de Liga
-  const targetJornada = matchdaysPlayed + 1;
-  const semFound = CALENDARIO_TEMPORADA.find(s =>
-    s.fixtures.some(f => f.competicion === 'LIGA' && f.esPartido && f.ronda.includes(`Jornada ${targetJornada}`))
-  );
+  const week = Math.min(totalWeeks, Math.max(1, matchdaysPlayed + officeOffset + 1));
 
-  let week = semFound ? semFound.weekIndex : Math.min(40, matchdaysPlayed + 2);
-
-  // Revisar si cae en un parón pendiente
-  const activeOffice = officeWeeks.find(w => w.week === week && !completed.includes(w.week) && w.triggerAfterMd <= matchdaysPlayed);
-  const isOfficeWeek = !!activeOffice;
-  const currentSem = CALENDARIO_TEMPORADA.find(s => s.weekIndex === week) || CALENDARIO_TEMPORADA[0];
-  const isMarketPeriod = week === 1 || week === 2 || week === 24 || week === 42;
+  // Comprobar si la semana calculada coincide con un mercado de fichajes
+  const isMarketPeriod = officeWeeks.some(ow => ow.isMarket && (ow.week === week || (matchdaysPlayed >= ow.triggerAfterMd && !completed.includes(ow.week))));
 
   return {
     week,
-    weekIndex: week,
-    semana: currentSem,
-    isOfficeWeek,
+    isOfficeWeek: false,
     isMarketOpen: isMarketPeriod,
-    officeInfo: activeOffice || null,
+    officeInfo: null,
     totalWeeks
   };
 };
 
 export const getChampionsScheduledWeeks = (totalLeagueMatchdays = 38) => {
-  // Mapeo exacto de las 13 fechas continentales en el calendario de 42 semanas
-  return [
-    { clRoundIdx: 0, phaseKey: 'groups_1', label: 'Champions · Grupos J1', shortLabel: 'UCL J1', defaultWeek: 7 },
-    { clRoundIdx: 1, phaseKey: 'groups_2', label: 'Champions · Grupos J2', shortLabel: 'UCL J2', defaultWeek: 9 },
-    { clRoundIdx: 2, phaseKey: 'groups_3', label: 'Champions · Grupos J3', shortLabel: 'UCL J3', defaultWeek: 11 },
-    { clRoundIdx: 3, phaseKey: 'groups_4', label: 'Champions · Grupos J4', shortLabel: 'UCL J4', defaultWeek: 14 },
-    { clRoundIdx: 4, phaseKey: 'groups_5', label: 'Champions · Grupos J5', shortLabel: 'UCL J5', defaultWeek: 16 },
-    { clRoundIdx: 5, phaseKey: 'groups_6', label: 'Champions · Grupos J6', shortLabel: 'UCL J6', defaultWeek: 18 },
-    { clRoundIdx: 6, phaseKey: 'Octavos_leg1', label: 'Champions · Octavos (Ida)', shortLabel: 'UCL 1/8 Ida', defaultWeek: 25 },
-    { clRoundIdx: 7, phaseKey: 'Octavos_leg2', label: 'Champions · Octavos (Vuelta)', shortLabel: 'UCL 1/8 Vta', defaultWeek: 27 },
-    { clRoundIdx: 8, phaseKey: 'Cuartos_leg1', label: 'Champions · Cuartos (Ida)', shortLabel: 'UCL 1/4 Ida', defaultWeek: 30 },
-    { clRoundIdx: 9, phaseKey: 'Cuartos_leg2', label: 'Champions · Cuartos (Vuelta)', shortLabel: 'UCL 1/4 Vta', defaultWeek: 32 },
-    { clRoundIdx: 10, phaseKey: 'Semis_leg1', label: 'Champions · Semis (Ida)', shortLabel: 'UCL Semis Ida', defaultWeek: 34 },
-    { clRoundIdx: 11, phaseKey: 'Semis_leg2', label: 'Champions · Semis (Vuelta)', shortLabel: 'UCL Semis Vta', defaultWeek: 36 },
-    { clRoundIdx: 12, phaseKey: 'Final', label: 'Champions · Gran Final', shortLabel: 'UCL Final', defaultWeek: 41 }
+  const totalRounds = Math.max(10, totalLeagueMatchdays || 38);
+  const officeWeeks = getSpecialOfficeWeeks(totalRounds);
+  const totalWeeks = totalRounds + officeWeeks.length;
+
+  // Distribución armónica y proporcional de las 13 fechas de Champions (Grupos J1-J6, Octavos Ida/Vta, Cuartos Ida/Vta, Semis Ida/Vta, Final)
+  const targets = [
+    { clRoundIdx: 0, phaseKey: 'groups_1', label: 'Champions · Grupos J1', shortLabel: 'UCL J1', ratio: 0.09 },
+    { clRoundIdx: 1, phaseKey: 'groups_2', label: 'Champions · Grupos J2', shortLabel: 'UCL J2', ratio: 0.16 },
+    { clRoundIdx: 2, phaseKey: 'groups_3', label: 'Champions · Grupos J3', shortLabel: 'UCL J3', ratio: 0.23 },
+    { clRoundIdx: 3, phaseKey: 'groups_4', label: 'Champions · Grupos J4', shortLabel: 'UCL J4', ratio: 0.30 },
+    { clRoundIdx: 4, phaseKey: 'groups_5', label: 'Champions · Grupos J5', shortLabel: 'UCL J5', ratio: 0.37 },
+    { clRoundIdx: 5, phaseKey: 'groups_6', label: 'Champions · Grupos J6', shortLabel: 'UCL J6', ratio: 0.44 },
+    { clRoundIdx: 6, phaseKey: 'Octavos_leg1', label: 'Champions · Octavos (Ida)', shortLabel: 'UCL 1/8 Ida', ratio: 0.58 },
+    { clRoundIdx: 7, phaseKey: 'Octavos_leg2', label: 'Champions · Octavos (Vuelta)', shortLabel: 'UCL 1/8 Vta', ratio: 0.65 },
+    { clRoundIdx: 8, phaseKey: 'Cuartos_leg1', label: 'Champions · Cuartos (Ida)', shortLabel: 'UCL 1/4 Ida', ratio: 0.74 },
+    { clRoundIdx: 9, phaseKey: 'Cuartos_leg2', label: 'Champions · Cuartos (Vuelta)', shortLabel: 'UCL 1/4 Vta', ratio: 0.79 },
+    { clRoundIdx: 10, phaseKey: 'Semis_leg1', label: 'Champions · Semis (Ida)', shortLabel: 'UCL Semis Ida', ratio: 0.86 },
+    { clRoundIdx: 11, phaseKey: 'Semis_leg2', label: 'Champions · Semis (Vuelta)', shortLabel: 'UCL Semis Vta', ratio: 0.91 },
+    { clRoundIdx: 12, phaseKey: 'Final', label: 'Champions · Gran Final', shortLabel: 'UCL Final', ratio: 0.98 }
   ];
+
+  let lastAssigned = 1;
+  return targets.map((t, idx) => {
+    let ideal = Math.round(t.ratio * totalWeeks);
+    if (idx === targets.length - 1) {
+      ideal = totalWeeks;
+    }
+    let assigned = Math.max(lastAssigned + 1, Math.min(totalWeeks, ideal));
+    lastAssigned = assigned;
+    return {
+      clRoundIdx: t.clRoundIdx,
+      phaseKey: t.phaseKey,
+      label: t.label,
+      shortLabel: t.shortLabel,
+      defaultWeek: assigned
+    };
+  });
 };
 
 export const DEFAULT_CAREER = {
