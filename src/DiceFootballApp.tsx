@@ -810,6 +810,165 @@ const generateLeagueSchedule = (teams, twoLegged = true) => {
   return rounds;
 };
 
+// Sincronización oficial entre UEFA Champions League (C1) y UEFA Europa League (C3):
+// Resuelve la fase de grupos de Champions League y transfiere los 8 terceros puestos auténticos (Grupos A a H) a Octavos de Europa League
+const resolveChampionsAndSyncEuropa = (currentComps: any, careerContext: any = null) => {
+  if (!currentComps) return currentComps;
+  let nextComps = { ...currentComps };
+  let c1 = nextComps['C1'];
+  let c3 = nextComps['C3'];
+  if (!c3) return nextComps;
+
+  // 1. Inicializar C1 si aún no tiene equipos
+  if (!c1 || !c1.teams || c1.teams.length === 0) {
+    const clData = getAutoFillData('C1', nextComps);
+    if (clData) {
+      c1 = {
+        ...nextComps['C1'],
+        ...clData,
+        id: 'C1',
+        name: nextComps['C1']?.name || 'Champions League'
+      };
+      nextComps['C1'] = c1;
+    }
+  }
+
+  // 2. Si C1 está en fase de grupos y tiene jornadas pendientes, simularlas hasta completar las 6 jornadas
+  if (c1 && c1.phase === 'groups' && Array.isArray(c1.groups) && c1.groups.length === 8) {
+    let simC1 = { ...c1, teams: [...(c1.teams || [])], history: [...(c1.history || [])] };
+    const maxMatchdays = 6;
+    let guard = 0;
+    while ((simC1.matchday || 0) < maxMatchdays && guard++ < 15) {
+      const results: any[] = [];
+      simC1.groups.forEach((group: any) => {
+        const groupTeams = (simC1.teams || []).filter((t: any) => group.teamIds?.includes(t.id));
+        const schedule = generateLeagueSchedule(groupTeams, true);
+        const currentRound = schedule[(simC1.matchday || 0) % maxMatchdays];
+        if (currentRound) {
+          currentRound.forEach((m: any) => {
+            const h = (simC1.teams || []).find((t: any) => t.id === m.homeId);
+            const a = (simC1.teams || []).find((t: any) => t.id === m.awayId);
+            const { sh, sa } = simMatchGoals(h?.opp, h?.att, a?.def, a?.opp, a?.att, h?.def);
+            results.push({ hId: m.homeId, aId: m.awayId, sh, sa, penH: null, penA: null });
+          });
+        }
+      });
+
+      const updatedTeams = (simC1.teams || []).map((t: any) => {
+        const res = results.find(r => r.hId === t.id || r.aId === t.id);
+        if (!res) return t;
+        const isHome = res.hId === t.id;
+        const gf = isHome ? res.sh : res.sa;
+        const ga = isHome ? res.sa : res.sh;
+        const w = gf > ga ? 1 : 0;
+        const d = gf === ga ? 1 : 0;
+        const l = gf < ga ? 1 : 0;
+        return {
+          ...t,
+          p: (t.p || 0) + 1,
+          w: (t.w || 0) + w,
+          d: (t.d || 0) + d,
+          l: (t.l || 0) + l,
+          gf: (t.gf || 0) + gf,
+          ga: (t.ga || 0) + ga,
+          pts: (t.pts || 0) + (w * 3 + d)
+        };
+      });
+
+      const nextMatchday = (simC1.matchday || 0) + 1;
+      const isEndOfGroups = nextMatchday >= maxMatchdays;
+      let newBracket = simC1.bracket;
+      if (isEndOfGroups) {
+        newBracket = generateKnockoutBrackets({ ...simC1, teams: updatedTeams });
+      }
+
+      simC1 = {
+        ...simC1,
+        teams: updatedTeams,
+        history: [{ day: 'Jornada ' + nextMatchday, results }, ...(simC1.history || [])],
+        matchday: nextMatchday,
+        phase: isEndOfGroups ? (newBracket?.Octavos ? 'Octavos' : 'Cuartos') : 'groups',
+        bracket: newBracket
+      };
+    }
+    c1 = simC1;
+    nextComps['C1'] = c1;
+  }
+
+  // 3. Extraer los 8 terceros puestos oficiales de Champions League (Grupos A al H)
+  if (c1 && Array.isArray(c1.groups) && c1.groups.length === 8 && Array.isArray(c1.teams)) {
+    const championsThirds: any[] = c1.groups.map((g: any, gi: number) => {
+      const groupTeams = c1.teams
+        .filter((t: any) => g.teamIds && g.teamIds.includes(t.id))
+        .sort((a: any, b: any) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
+      const third = groupTeams[2];
+      if (third) {
+        return {
+          ...third,
+          elOrigin: 'champions_third',
+          elGroupLetter: String.fromCharCode(65 + gi),
+          elProvisional: false
+        };
+      }
+      return null;
+    }).filter(Boolean);
+
+    if (championsThirds.length === 8 && c3) {
+      let elBracket = c3.bracket ? JSON.parse(JSON.stringify(c3.bracket)) : {};
+      let elTeams = c3.teams ? [...c3.teams] : [];
+      const base32 = elTeams.slice(0, 32);
+      const reindexedThirds = championsThirds.map((t, idx) => ({
+        ...t,
+        id: 33 + idx,
+        p: 0,
+        w: 0,
+        d: 0,
+        l: 0,
+        gf: 0,
+        ga: 0,
+        pts: 0
+      }));
+      const mergedTeams = [...base32, ...reindexedThirds];
+
+      const isCareerInThirds = championsThirds.some(t => careerContext?.active && careerContext?.team && t.name === careerContext?.team?.name);
+      const careerThirdIndex = championsThirds.findIndex(t => careerContext?.active && careerContext?.team && t.name === careerContext?.team?.name);
+      const careerTransferId = careerThirdIndex !== -1 ? 33 + careerThirdIndex : c3.careerTeamId;
+
+      const octavosMatches = Array(8).fill(0).map((_, i) => ({
+        id: 'O' + (i + 1),
+        hId: 33 + i,
+        aId: elBracket.Octavos?.[i]?.aId ?? elBracket.Playoffs?.[i] ? (
+          elBracket.Playoffs[i]?.sh !== null && elBracket.Playoffs[i]?.sh !== undefined ? (
+            ((elBracket.Playoffs[i]?.sh || 0) + (elBracket.Playoffs[i]?.sh2 || 0)) > ((elBracket.Playoffs[i]?.sa || 0) + (elBracket.Playoffs[i]?.sa2 || 0))
+              ? elBracket.Playoffs[i].hId
+              : ((elBracket.Playoffs[i]?.sh || 0) + (elBracket.Playoffs[i]?.sh2 || 0)) < ((elBracket.Playoffs[i]?.sa || 0) + (elBracket.Playoffs[i]?.sa2 || 0))
+              ? elBracket.Playoffs[i].aId
+              : ((elBracket.Playoffs[i]?.penH || 0) > (elBracket.Playoffs[i]?.penA || 0) ? elBracket.Playoffs[i].hId : elBracket.Playoffs[i].aId)
+          ) : null
+        ) : null,
+        sh: elBracket.Octavos?.[i]?.sh ?? null,
+        sa: elBracket.Octavos?.[i]?.sa ?? null,
+        penH: elBracket.Octavos?.[i]?.penH ?? null,
+        penA: elBracket.Octavos?.[i]?.penA ?? null,
+        sh2: elBracket.Octavos?.[i]?.sh2 ?? null,
+        sa2: elBracket.Octavos?.[i]?.sa2 ?? null
+      }));
+
+      elBracket.Octavos = octavosMatches;
+      nextComps['C3'] = {
+        ...c3,
+        teams: mergedTeams,
+        bracket: elBracket,
+        participantsFrozen: true,
+        championsSynced: true,
+        careerTeamId: careerTransferId || c3.careerTeamId
+      };
+    }
+  }
+
+  return nextComps;
+};
+
 
 // ==========================================
 // 3. COMPONENTES ATÓMICOS
@@ -2090,33 +2249,115 @@ const ArchiveView = ({ setView, archive, selectedArchiveEntry, setSelectedArchiv
               </div>
             )}
 
-            {selectedArchiveEntry.type !== 'league' && selectedArchiveEntry.bracket?.Final && selectedArchiveEntry.bracket.Final[0] && (
-               <div className="bg-slate-800/30 backdrop-blur-sm rounded-2xl p-4 border border-white/5">
-                 <h4 className='text-[10px] font-black uppercase text-slate-300 mb-3 flex justify-center items-center gap-2'><Swords size={14}/> La Gran Final</h4>
-                 {(() => {
-                   const finalMatch = selectedArchiveEntry.bracket.Final[0];
-                   const home = selectedArchiveEntry.teams?.find(t => t.id === finalMatch.hId);
-                   const away = selectedArchiveEntry.teams?.find(t => t.id === finalMatch.aId);
-                   return (
-                     <div className="flex items-center justify-between bg-black/30 p-3 rounded-xl border border-white/5">
-                        <div className="flex items-center gap-2 w-20">
-                           <Shield color1={home?.color1} color2={home?.color2} initial={home?.name} size='xs' isFlag={home?.isFlag}/>
-                           <span className="text-[9px] font-bold uppercase truncate">{home?.name}</span>
+            {selectedArchiveEntry.type !== 'league' && selectedArchiveEntry.bracket && (
+              <div className="space-y-4">
+                {selectedArchiveEntry.groups && Array.isArray(selectedArchiveEntry.groups) && selectedArchiveEntry.groups.length > 0 && (
+                  <div className="bg-slate-800/30 backdrop-blur-sm rounded-2xl p-4 border border-white/5 text-left">
+                    <h4 className='text-[10px] font-black uppercase text-blue-400 mb-3 flex items-center gap-2'><ShieldIcon size={13}/> Fase de Grupos</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {selectedArchiveEntry.groups.map((group: any, gi: number) => (
+                        <div key={gi} className="bg-black/30 p-2.5 rounded-xl border border-white/5">
+                          <p className="text-[9px] font-black uppercase text-blue-300 mb-1.5">{group.name}</p>
+                          <div className="space-y-1">
+                            {(selectedArchiveEntry.teams || []).filter((t: any) => group.teamIds.includes(t.id)).sort((a: any, b: any) => (b.pts || 0) - (a.pts || 0) || ((b.gf || 0) - (b.ga || 0)) - ((a.gf || 0) - (a.ga || 0))).map((t: any, idx: number) => (
+                              <div key={t.id} className="flex items-center justify-between text-[9px] px-2 py-1 rounded bg-slate-900/40">
+                                <div className="flex items-center gap-1.5 truncate">
+                                  <span className="text-[8px] font-black text-slate-400 w-3">{idx + 1}</span>
+                                  <Shield color1={t.color1} color2={t.color2} initial={t.name} size="xs" isFlag={t.isFlag} />
+                                  <span className="truncate text-white font-bold">{t.name}</span>
+                                </div>
+                                <span className="text-emerald-400 font-black text-[9px] shrink-0">{t.pts || 0} PTS</span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                        <div className="flex flex-col items-center">
-                           <span className="bg-slate-900/50 px-3 py-1 rounded text-[11px] font-black tabular-nums">{finalMatch.sh} - {finalMatch.sa}</span>
-                           {finalMatch.penH !== null && finalMatch.penH !== undefined && (
-                             <span className="text-[8px] text-blue-300 font-bold mt-1">(pen {finalMatch.penH}-{finalMatch.penA})</span>
-                           )}
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="bg-slate-800/30 backdrop-blur-sm rounded-2xl p-4 border border-white/5 text-left">
+                  <h4 className='text-[10px] font-black uppercase text-yellow-400 mb-3 flex items-center gap-2'><Swords size={14}/> Llave Eliminatoria Completa</h4>
+                  <div className="space-y-3">
+                    {['Dieciseisavos', 'Playoffs', 'Octavos', 'Cuartos', 'Semis', 'TercerPuesto', 'Final'].filter(p => selectedArchiveEntry.bracket[p]).map(phase => {
+                      const rawList = selectedArchiveEntry.bracket[phase];
+                      const matches = Array.isArray(rawList) ? rawList : (rawList ? [rawList] : []);
+                      if (!matches.length) return null;
+                      const phaseName = phase === 'Dieciseisavos' ? '1/16 Final (R1)' : phase === 'Playoffs' ? '1/16 Final (R2 · Playoffs)' : phase === 'Octavos' ? 'Octavos de Final' : phase === 'Cuartos' ? 'Cuartos de Final' : phase === 'Semis' ? 'Semifinales' : phase === 'TercerPuesto' ? 'Tercer Puesto' : '🏆 Gran Final';
+                      const isTwoLegged = (selectedArchiveEntry.compId === 'C1' || selectedArchiveEntry.compId === 'C3') && phase !== 'Final' && phase !== 'TercerPuesto';
+
+                      return (
+                        <div key={phase} className="bg-black/40 rounded-xl p-3 border border-white/5">
+                          <p className="text-[9px] font-black uppercase tracking-wider text-amber-300 mb-2">{phaseName}</p>
+                          <div className="space-y-2">
+                            {matches.map((m: any, mi: number) => {
+                              const home = (selectedArchiveEntry.teams || []).find((t: any) => t.id === m.hId);
+                              const away = (selectedArchiveEntry.teams || []).find((t: any) => t.id === m.aId);
+                              let winnerId = null;
+                              if (m.sh !== null && m.sh !== undefined && m.sa !== null && m.sa !== undefined) {
+                                if (isTwoLegged && m.sh2 !== null && m.sh2 !== undefined) {
+                                  const totH = (m.sh || 0) + (m.sh2 || 0);
+                                  const totA = (m.sa || 0) + (m.sa2 || 0);
+                                  if (totH > totA) winnerId = m.hId;
+                                  else if (totA > totH) winnerId = m.aId;
+                                  else winnerId = ((m.penH || 0) > (m.penA || 0)) ? m.hId : m.aId;
+                                } else {
+                                  if (m.sh > m.sa) winnerId = m.hId;
+                                  else if (m.sa > m.sh) winnerId = m.aId;
+                                  else winnerId = ((m.penH || 0) > (m.penA || 0)) ? m.hId : m.aId;
+                                }
+                              }
+                              const winner = (selectedArchiveEntry.teams || []).find((t: any) => t.id === winnerId);
+
+                              return (
+                                <div key={mi} className="bg-slate-900/60 p-2.5 rounded-lg border border-white/5 flex flex-col gap-1.5">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                                      <Shield color1={home?.color1} color2={home?.color2} initial={home?.name} size='xs' isFlag={home?.isFlag} />
+                                      <span className={`text-[10px] font-bold uppercase truncate ${winnerId === home?.id ? 'text-amber-300 font-black' : 'text-white'}`}>{home?.name || 'Por definir'}</span>
+                                    </div>
+                                    <div className="px-2 text-center shrink-0">
+                                      {isTwoLegged && m.sh2 !== null && m.sh2 !== undefined ? (
+                                        <div className="flex flex-col items-center">
+                                          <span className="text-[10px] font-black text-amber-300 bg-slate-950 px-2 py-0.5 rounded border border-white/10">
+                                            {(m.sh || 0) + (m.sh2 || 0)} - {(m.sa || 0) + (m.sa2 || 0)}
+                                          </span>
+                                          <span className="text-[7.5px] text-slate-400 mt-0.5">Ida {m.sh}-{m.sa} | Vta {m.sh2}-{m.sa2}</span>
+                                          {m.penH !== null && m.penH !== undefined && (
+                                            <span className="text-[7px] text-blue-400 font-bold">(pen {m.penH}-{m.penA})</span>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <div className="flex flex-col items-center">
+                                          <span className="text-[10px] font-black text-white bg-slate-950 px-2 py-0.5 rounded border border-white/10">
+                                            {m.sh !== null && m.sh !== undefined ? `${m.sh} - ${m.sa}` : 'vs'}
+                                          </span>
+                                          {m.penH !== null && m.penH !== undefined && (
+                                            <span className="text-[7px] text-blue-400 font-bold">(pen {m.penH}-{m.penA})</span>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center justify-end gap-2 min-w-0 flex-1">
+                                      <span className={`text-[10px] font-bold uppercase truncate text-right ${winnerId === away?.id ? 'text-amber-300 font-black' : 'text-white'}`}>{away?.name || 'Por definir'}</span>
+                                      <Shield color1={away?.color1} color2={away?.color2} initial={away?.name} size='xs' isFlag={away?.isFlag} />
+                                    </div>
+                                  </div>
+                                  {winner && (
+                                    <div className="text-[7.5px] font-black uppercase text-right text-emerald-400/90 pt-0.5 border-t border-white/5">
+                                      {phase === 'Final' ? '🏆 Campeón: ' : phase === 'TercerPuesto' ? '🥉 3º Puesto: ' : 'Pasa: '}<span className="text-amber-300">{winner.name}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 w-20 justify-end">
-                           <span className="text-[9px] font-bold uppercase truncate text-right">{away?.name}</span>
-                           <Shield color1={away?.color1} color2={away?.color2} initial={away?.name} size='xs' isFlag={away?.isFlag}/>
-                        </div>
-                     </div>
-                   );
-                 })()}
-               </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -2311,8 +2552,16 @@ const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pe
       {/* FRANJA HORIZONTAL: TORNEOS INTERNACIONALES (CHAMPIONS, UEFA & FIFA) */}
       {(() => {
         const clComp = comps['C1'];
-        const isChampionsRepescaReady = Boolean(clComp && (clComp.phase !== 'groups' || (clComp.matchday || 0) >= 6));
-        const elPhaseLabel = comps['C3']?.phase === 'Dieciseisavos' ? '1/16 Final' : comps['C3']?.phase || 'Eliminatorias';
+        const elComp = comps['C3'];
+        const hasELTeams = Boolean(elComp?.teams && elComp.teams.length > 0);
+        const isELReady = allLeaguesFinished || hasELTeams;
+        const elPhaseLabel = elComp?.phase === 'Dieciseisavos' 
+          ? '1/16 Final · R1' 
+          : elComp?.phase === 'Playoffs' 
+          ? '1/16 Final · R2' 
+          : elComp?.phase === 'Octavos'
+          ? 'Octavos de Final'
+          : elComp?.phase || '32 Clubes';
 
         return (
           <div className='w-full p-2.5 sm:p-3 bg-slate-900/60 backdrop-blur-2xl rounded-3xl border border-white/10 shadow-xl space-y-2'>
@@ -2346,28 +2595,28 @@ const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pe
                 </div>
               </button>
 
-              {/* Botón 2: UEFA Europa League (Bloqueado hasta repesca de Champions) */}
+              {/* Botón 2: UEFA Europa League */}
               <button
                 onClick={() => {
-                  if (!isChampionsRepescaReady) {
+                  if (!isELReady && !hasELTeams) {
                     setHelpModal({
-                      title: 'UEFA Europa League · Esperando Repesca',
-                      content: 'La UEFA Europa League estará disponible una vez que la UEFA Champions League finalice su Fase de Grupos (Jornada 6).\n\nEn ese momento se confirmarán los 8 clubes repescados que obtendrán pase directo a los Octavos de Final para enfrentarse a los 8 clasificados de Liga.'
+                      title: 'UEFA Europa League · Sistema de Clasificación',
+                      content: 'La UEFA Europa League se activará automáticamente al finalizar las 8 Ligas Nacionales.\n\n• Clasifican los 32 clubes que finalicen entre el 5º y el 8º puesto de cada liga.\n• Disputarán Dieciseisavos (R1 y R2 / Playoffs).\n• Los 8 ganadores de Playoffs avanzarán a Octavos de Final para enfrentarse a los 8 terceros puestos de la Champions League.'
                     });
                     return;
                   }
                   setActiveCompId('C3'); setCompView('main'); setView('competition');
                 }}
                 className={`p-2.5 sm:p-3 backdrop-blur-xl rounded-2xl border flex flex-col items-center text-center gap-2 transition-all group ${
-                  isChampionsRepescaReady
+                  isELReady
                     ? 'bg-gradient-to-b from-amber-950/60 to-slate-900/60 border-amber-500/40 hover:border-amber-400 hover:shadow-[0_0_20px_rgba(245,158,11,0.3)] active:scale-[0.97]'
-                    : 'bg-slate-900/40 border-amber-500/20 opacity-75 hover:opacity-90 active:scale-[0.98]'
+                    : 'bg-slate-900/40 border-amber-500/20 opacity-80 hover:opacity-100 active:scale-[0.98]'
                 }`}
               >
                 <div className='relative w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-white border border-slate-200/90 flex items-center justify-center shadow-md group-hover:scale-105 transition-transform p-1.5 shrink-0'>
                   <CompetitionLogo compId="C3" size={32} showBackground={false} />
-                  {!isChampionsRepescaReady && (
-                    <div className='absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center shadow-md'>
+                  {!isELReady && !hasELTeams && (
+                    <div className='absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center shadow-md' title='Espera a que finalicen las Ligas'>
                       <Lock size={10} className='stroke-[3]' />
                     </div>
                   )}
@@ -2378,11 +2627,11 @@ const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pe
                   </h4>
                   <div className='mt-0.5'>
                     <span className={`text-[7.5px] font-black uppercase px-1.5 py-0.5 rounded-md border inline-block truncate max-w-full ${
-                      isChampionsRepescaReady
+                      isELReady
                         ? 'bg-amber-500/20 text-amber-300 border-amber-400/30'
                         : 'bg-amber-500/10 text-amber-300/80 border-amber-500/20'
                     }`}>
-                      {isChampionsRepescaReady ? elPhaseLabel : '🔒 Repesca J6 C1'}
+                      {isELReady ? elPhaseLabel : '🔒 Espera Ligas'}
                     </span>
                   </div>
                 </div>
@@ -3727,6 +3976,13 @@ function DiceFootballApp() {
         seasonTitles.push({ compId: 'C2', compName: c2.name || 'Copa del Mundo', type: 'cup', div: 1, winner: wcRecord.champion, season: seasonNow });
       }
     }
+    const c3 = comps['C3'];
+    if (c3) {
+      const elRecord = buildCupSeasonRecord(c3, seasonNow);
+      if (elRecord?.champion) {
+        seasonTitles.push({ compId: 'C3', compName: c3.name || 'Europa League', type: 'cup', div: 1, winner: elRecord.champion, season: seasonNow });
+      }
+    }
     registerTitles(seasonTitles);
     setComps(prev => {
       const next = { ...prev };
@@ -3852,6 +4108,7 @@ function DiceFootballApp() {
       });
       const defaults = getDefaultComps();
       next['C1'] = { ...defaults['C1'] };
+      next['C3'] = { ...defaults['C3'] };
       return next;
     });
     if (seasonTitles.length > 0) {
@@ -4028,8 +4285,22 @@ function DiceFootballApp() {
     if (!home || !away) return;
 
     if (career?.active && careerTeam) {
-      const isCareerHome = (home.name === careerTeam.name) && (activeCompId === career.compId ? (isDiv2Context ? career.div === 2 : career.div === 1) : (activeCompId === 'C1' && (clComp?.careerTeamId === career.teamId || clComp?.teams?.some(t => t.id === home.id && t.name === careerTeam.name))));
-      const isCareerAway = (away.name === careerTeam.name) && (activeCompId === career.compId ? (isDiv2Context ? career.div === 2 : career.div === 1) : (activeCompId === 'C1' && (clComp?.careerTeamId === career.teamId || clComp?.teams?.some(t => t.id === away.id && t.name === careerTeam.name))));
+      const isCareerHome = (home.name === careerTeam.name) && (
+        activeCompId === career.compId 
+          ? (isDiv2Context ? career.div === 2 : career.div === 1) 
+          : ((activeCompId === 'C1' || activeCompId === 'C3') && (
+              activeComp?.careerTeamId === home.id || 
+              activeComp?.teams?.some((t: any) => t.id === home.id && t.name === careerTeam.name)
+            ))
+      );
+      const isCareerAway = (away.name === careerTeam.name) && (
+        activeCompId === career.compId 
+          ? (isDiv2Context ? career.div === 2 : career.div === 1) 
+          : ((activeCompId === 'C1' || activeCompId === 'C3') && (
+              activeComp?.careerTeamId === away.id || 
+              activeComp?.teams?.some((t: any) => t.id === away.id && t.name === careerTeam.name)
+            ))
+      );
 
       if (isCareerHome || isCareerAway) {
         const base = {
@@ -5414,6 +5685,15 @@ function DiceFootballApp() {
           userTeamId: mine?.id || cl.userTeamId
         };
       }
+
+      // Inicializar UEFA Europa League (C3) con los clasificados 5º a 8º de cada liga
+      const el = getAutoFillData('C3', next, []);
+      if (el) {
+        next['C3'] = {
+          ...next['C3'], ...el,
+          name: next['C3']?.name || 'Europa League'
+        };
+      }
       return next;
     });
 
@@ -5912,8 +6192,26 @@ function DiceFootballApp() {
     let comp = JSON.parse(JSON.stringify(initialComp));
     const targetId = comp.id || compId || (comp.name?.includes('Champions') || (Array.isArray(comp.groups) && comp.groups.length === 8) ? 'C1' : 'C2');
     comp.id = targetId;
-    const isChampions = (targetId === 'C1' || comp.name?.includes('Champions')) && targetId !== 'C2' && !comp.name?.includes('Mundial') && !comp.name?.includes('World');
+    const isChampions = (targetId === 'C1' || targetId === 'C3' || comp.name?.includes('Champions') || comp.name?.includes('Europa')) && targetId !== 'C2' && !comp.name?.includes('Mundial') && !comp.name?.includes('World');
     const isWorldCup = targetId === 'C2' || comp.name?.includes('Mundial') || comp.name?.includes('World');
+
+    // Si simulamos Europa League (C3) y Champions League (C1) aún está en fase de grupos, sincronizar primero C1
+    if (targetId === 'C3' && comps['C1']?.phase === 'groups') {
+      const synced = resolveChampionsAndSyncEuropa(comps, { active: career?.active, team: careerTeam });
+      if (synced['C1']) {
+        setComps(prev => ({ ...prev, C1: synced['C1'] }));
+      }
+      if (synced['C3']?.teams?.length) {
+        comp.teams = synced['C3'].teams;
+        if (comp.bracket?.Octavos) {
+          comp.bracket.Octavos = comp.bracket.Octavos.map((o: any, idx: number) => ({
+            ...o,
+            hId: 33 + idx
+          }));
+        }
+      }
+    }
+
     let guard = 0;
 
     while (guard++ < 40) {
@@ -6060,7 +6358,7 @@ function DiceFootballApp() {
           } else if (phase === 'Octavos') {
             nextPhase = 'Cuartos';
             newBracket.Cuartos = Array(4).fill(0).map((_, i) => ({
-              id: 'C' + (i + 1),
+              id: 'Q' + (i + 1),
               hId: winners[i * 2] ?? comp.teams?.[i * 2]?.id ?? 0,
               aId: winners[i * 2 + 1] ?? comp.teams?.[i * 2 + 1]?.id ?? 1,
               sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
@@ -6220,9 +6518,26 @@ function DiceFootballApp() {
         }
         archiveCompetition('C1', 1, clWinner, finishedC1);
       }
+
+      // Sincronizar también la simulación de Europa League si existe
+      let finishedC3 = next['C3'];
+      if (finishedC3 && finishedC3.teams?.length && finishedC3.phase !== 'Terminado' && !finishedC3.showWinner) {
+        finishedC3 = simulateEntireCupToFinish(finishedC3, 'C3');
+        if (finishedC3.showWinner) {
+          const final = finishedC3.bracket?.Final?.[0] || finishedC3.bracket?.Final;
+          let elWinner = null;
+          if (final && final.sh !== null && final.sh !== undefined) {
+            const winId = (final.sh > final.sa) ? final.hId : (final.sa > final.sh) ? final.aId : (((final.penH || 0) > (final.penA || 0)) ? final.hId : final.aId);
+            elWinner = finishedC3.teams?.find((t: any) => t.id === winId);
+          }
+          archiveCompetition('C3', 1, elWinner, finishedC3);
+        }
+      }
+
       return {
         ...next,
-        C1: finishedC1
+        C1: finishedC1,
+        ...(finishedC3 ? { C3: finishedC3 } : {})
       };
     });
     setCareer(c => (c.active ? { ...c, clSeason: seasonNow } : c));
@@ -6748,38 +7063,9 @@ function DiceFootballApp() {
 
         // Sincronizar Europa League con repescados de Champions League
         if (cId === 'C1' && isEndOfGroups) {
-          const championsThirds: any[] = (currentComp.groups || []).map((g: any) => {
-            const groupTeams = updatedTeams
-              .filter((t: any) => g.teamIds && g.teamIds.includes(t.id))
-              .sort((a: any, b: any) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
-            return groupTeams[2];
-          }).filter(Boolean);
-
-          const elComp = comps['C3'];
-          if (elComp) {
-            let elBracket = elComp.bracket ? JSON.parse(JSON.stringify(elComp.bracket)) : {};
-            let elTeams = elComp.teams ? [...elComp.teams] : [];
-            if (championsThirds.length === 8) {
-              const base32 = elTeams.slice(0, 32);
-              const mergedTeams = [...base32, ...championsThirds.map((t, idx) => ({ ...t, id: 33 + idx }))];
-              const octavosMatches = Array(8).fill(0).map((_, i) => ({
-                id: 'O' + (i + 1),
-                hId: 33 + i,
-                aId: elBracket.Octavos?.[i]?.aId ?? null,
-                sh: elBracket.Octavos?.[i]?.sh ?? null,
-                sa: elBracket.Octavos?.[i]?.sa ?? null,
-                penH: elBracket.Octavos?.[i]?.penH ?? null,
-                penA: elBracket.Octavos?.[i]?.penA ?? null,
-                sh2: elBracket.Octavos?.[i]?.sh2 ?? null,
-                sa2: elBracket.Octavos?.[i]?.sa2 ?? null
-              }));
-              elBracket.Octavos = octavosMatches;
-              updateCompById('C3', {
-                ...elComp,
-                teams: mergedTeams,
-                bracket: elBracket
-              });
-            }
+          const synced = resolveChampionsAndSyncEuropa({ ...comps, C1: { ...currentComp, teams: updatedTeams, history: [{ day: 'Jornada ' + nextMatchday, results }, ...currentComp.history], matchday: nextMatchday, phase: (newBracket?.Octavos ? 'Octavos' : 'Cuartos'), bracket: newBracket } }, { active: career?.active, team: careerTeam });
+          if (synced['C3']) {
+            updateCompById('C3', synced['C3']);
           }
         }
 
@@ -6863,16 +7149,25 @@ function DiceFootballApp() {
             }
           } else if (phase === 'Playoffs') {
             nextPhase = 'Octavos';
+            if (cId === 'C3') {
+              const synced = resolveChampionsAndSyncEuropa(comps, { active: career?.active, team: careerTeam });
+              if (synced['C1']) {
+                updateCompById('C1', synced['C1']);
+              }
+              if (synced['C3']?.teams?.length) {
+                currentComp.teams = synced['C3'].teams;
+              }
+            }
             newBracket.Octavos = Array(8).fill(0).map((_, i) => ({
               id: 'O' + (i + 1),
-              hId: newBracket.Octavos?.[i]?.hId ?? currentComp.teams?.[32 + i]?.id ?? (33 + i),
+              hId: (33 + i),
               aId: winners[i] ?? null,
               sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
             }));
           } else if (phase === 'Octavos') {
             nextPhase = 'Cuartos';
             newBracket.Cuartos = Array(4).fill(0).map((_, i) => ({
-              id: 'C' + (i + 1),
+              id: 'Q' + (i + 1),
               hId: winners[i * 2] ?? currentComp.teams?.[i * 2]?.id ?? 0,
               aId: winners[i * 2 + 1] ?? currentComp.teams?.[i * 2 + 1]?.id ?? 1,
               sh: null, sa: null, penH: null, penA: null, sh2: null, sa2: null
@@ -7725,7 +8020,11 @@ function DiceFootballApp() {
                                 const awayWon = r.sa > r.sh || (r.penA !== null && r.penA !== undefined && r.penA > r.penH);
                                 const isTie = r.sh === r.sa && (r.penH === null || r.penH === undefined);
                                 const isCareerMatchHere = activeCompId === career.compId ? (r.hId === careerTeam?.id || r.aId === careerTeam?.id) : false;
-                                const isUserMatch = isCareerMatchHere || (activeCompId === 'C1' && (r.hId === activeComp?.careerTeamId || r.aId === activeComp?.careerTeamId)) || r.hId === activeComp?.userTeamId || r.aId === activeComp?.userTeamId;
+                                const isEuropeanCareerMatch = (activeCompId === 'C1' || activeCompId === 'C3') && (
+                                  (activeComp?.careerTeamId && (r.hId === activeComp?.careerTeamId || r.aId === activeComp?.careerTeamId)) ||
+                                  (careerTeam && (home?.name === careerTeam.name || away?.name === careerTeam.name))
+                                );
+                                const isUserMatch = isCareerMatchHere || isEuropeanCareerMatch || r.hId === activeComp?.userTeamId || r.aId === activeComp?.userTeamId;
 
                                 return (
                                   <div
@@ -8071,6 +8370,42 @@ function DiceFootballApp() {
              <MenuButton icon={<Settings size={16} className='text-slate-300'/>} label="Ajustes" onClick={() => setCompView('config')} isWide />
            </div>
         </div>
+
+        {activeCompId === 'C3' && !cupTournamentEnded && (
+          <section className='bg-gradient-to-r from-amber-950/50 via-slate-900/70 to-amber-950/50 backdrop-blur-md rounded-[2rem] p-4 border border-amber-500/30 mb-6 shadow-md'>
+            <div className='flex items-center gap-3'>
+              <div className='w-9 h-9 rounded-2xl bg-amber-500/20 border border-amber-400/30 flex items-center justify-center text-amber-400 shrink-0 shadow-inner'>
+                <Info size={18} />
+              </div>
+              <div className='min-w-0 flex-1'>
+                <div className='flex items-center justify-between gap-2'>
+                  <h4 className='text-[10px] font-black uppercase italic text-amber-300 tracking-wider'>
+                    {activeComp.phase === 'Dieciseisavos' ? '1/16 Final (R1) · 32 Clubes de Liga' : activeComp.phase === 'Playoffs' ? '1/16 Final (R2 · Playoffs)' : activeComp.phase === 'Octavos' ? 'Octavos de Final · 8 Clasificados vs 8 de Champions' : `Fase Eliminatoria · ${activeComp.phase}`}
+                  </h4>
+                  <span className={`text-[7.5px] font-black uppercase px-2 py-0.5 rounded-full border ${comps['C1']?.phase !== 'groups' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-blue-500/20 text-blue-300 border-blue-500/30'}`}>
+                    {comps['C1']?.phase !== 'groups' ? '8 Terceros UCL Listos' : `UCL Grupos: J${comps['C1']?.matchday || 0}/6`}
+                  </span>
+                </div>
+                <p className='text-[8.5px] font-bold text-slate-300 mt-1 leading-snug'>
+                  {comps['C1']?.phase !== 'groups'
+                    ? 'Los 8 terceros puestos oficiales de los grupos A al H de Champions League están transferidos con sus estadísticas reales a los Octavos de Europa League.'
+                    : 'Los 8 clubes ganadores de los Playoffs avanzarán a Octavos para medirse a los 8 terceros auténticos de la fase de grupos de UEFA Champions League.'}
+                </p>
+              </div>
+            </div>
+
+            {comps['C1']?.phase === 'groups' && (
+              <button
+                onClick={() => {
+                  setComps(prev => resolveChampionsAndSyncEuropa(prev, { active: career?.active, team: careerTeam }));
+                }}
+                className='mt-3 w-full py-2 px-3 rounded-xl bg-blue-600/30 hover:bg-blue-600/50 border border-blue-400/40 text-blue-200 text-[8.5px] font-black uppercase tracking-wider active:scale-95 transition-all flex items-center justify-center gap-1.5'
+              >
+                <Sparkles size={12} className='text-amber-300' /> Resolver Grupos UCL y Transferir Terceros Ahora
+              </button>
+            )}
+          </section>
+        )}
 
         {activeComp.type !== 'league' && activeComp.phase === 'groups' && Array.isArray(activeComp.groups) && (
           <div className='grid grid-cols-1 gap-6 mb-8'>
@@ -8658,12 +8993,13 @@ function DiceFootballApp() {
           <div className='text-center py-20 text-slate-300 font-black bg-slate-900/30 backdrop-blur-md rounded-[2rem] border border-white/10 uppercase italic text-[10px] shadow-lg'>Las eliminatorias se generarán al finalizar la fase de grupos.</div>
         ) : (
           <div className='flex gap-4 overflow-x-auto custom-scrollbar pb-8'>
-            {['Dieciseisavos', 'Octavos', 'Cuartos', 'Semis', 'TercerPuesto', 'Final'].filter(p => activeComp.bracket[p]).map(phase => {
+            {['Dieciseisavos', 'Playoffs', 'Octavos', 'Cuartos', 'Semis', 'TercerPuesto', 'Final'].filter(p => activeComp.bracket[p]).map(phase => {
               const isTwoLegged = (activeCompId === 'C1' || activeCompId === 'C3') && phase !== 'Final' && phase !== 'TercerPuesto';
+              const phaseTitle = phase === 'Dieciseisavos' ? '1/16 Final - R1' : phase === 'Playoffs' ? '1/16 Final - R2' : phase === 'TercerPuesto' ? '3º Puesto' : phase;
               return (
                 <div key={phase} className='min-w-[260px] sm:min-w-[290px] flex-shrink-0 space-y-2.5'>
                   <div className='flex items-center justify-between bg-slate-900/60 px-3 py-2 rounded-xl border border-white/10'>
-                    <h3 className='text-[10px] font-black uppercase text-blue-300'>{phase === 'TercerPuesto' ? '3º Puesto' : phase}</h3>
+                    <h3 className='text-[10px] font-black uppercase text-blue-300'>{phaseTitle}</h3>
                     {isTwoLegged ? (
                       <div className='flex items-center gap-2 text-[7px] font-black uppercase tracking-wider text-slate-400'>
                         <span className='w-5 text-center'>Ida</span>
@@ -8705,6 +9041,11 @@ function DiceFootballApp() {
                               <span className={`text-[9px] font-black uppercase italic truncate ${winner?.id === h?.id ? 'text-amber-300 font-black' : h ? 'text-slate-200' : 'text-slate-500'}`}>
                                 {h?.name || 'TBD'}
                               </span>
+                              {activeCompId === 'C3' && phase === 'Octavos' && h && (h.id >= 33 && h.id <= 40) && (
+                                <span className='text-[6.5px] px-1 py-0.5 font-black uppercase rounded bg-blue-500/20 text-blue-300 border border-blue-400/30 shrink-0'>
+                                  3º UCL {h.elGroupLetter ? `(${h.elGroupLetter})` : `(${String.fromCharCode(65 + (h.id - 33))})`}
+                                </span>
+                              )}
                             </div>
                             {isTwoLegged ? (
                               <div className='flex items-center gap-1.5 tabular-nums text-[9px] shrink-0 font-bold'>
@@ -8734,6 +9075,11 @@ function DiceFootballApp() {
                               <span className={`text-[9px] font-black uppercase italic truncate ${winner?.id === a?.id ? 'text-amber-300 font-black' : a ? 'text-slate-200' : 'text-slate-500'}`}>
                                 {a?.name || 'TBD'}
                               </span>
+                              {activeCompId === 'C3' && phase === 'Octavos' && a && (
+                                <span className='text-[6.5px] px-1 py-0.5 font-black uppercase rounded bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 shrink-0'>
+                                  Playoff
+                                </span>
+                              )}
                             </div>
                             {isTwoLegged ? (
                               <div className='flex items-center gap-1.5 tabular-nums text-[9px] shrink-0 font-bold'>
