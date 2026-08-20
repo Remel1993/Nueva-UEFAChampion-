@@ -42,8 +42,9 @@ export const CareerChampionsHub: React.FC<CareerChampionsHubProps> = ({
   // Identificar el equipo del modo carrera dentro de la Champions (C1)
   const careerClTeam = useMemo(() => {
     if (!clComp?.teams?.length || !team) return null;
-    return clComp.teams.find((t: any) => t.id === clComp.careerTeamId) ||
-      clComp.teams.find((t: any) => t.name === (clComp.careerTeamName || team.name)) || null;
+    return clComp.teams.find((t: any) => t.name === team.name) ||
+      (clComp.careerTeamId ? clComp.teams.find((t: any) => t.id === clComp.careerTeamId) : null) ||
+      (clComp.careerTeamName ? clComp.teams.find((t: any) => t.name === clComp.careerTeamName) : null) || null;
   }, [clComp, team]);
 
   const phase = clComp?.phase || 'groups';
