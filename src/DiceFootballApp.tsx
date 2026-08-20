@@ -207,19 +207,38 @@ const getAuthenticTeamStats = (team: any) => {
 };
 
 // Ascensos / descensos limpios:
-// Los equipos ascienden y descienden manteniendo exactamente sus estadísticas reales a nivel europeo de la app
-const computeLeagueNewSeason = (comp: any) => {
+// Los equipos ascienden y descienden manteniendo exactamente sus estadísticas reales a nivel europeo de la app,
+// preservando las estadísticas mejoradas del equipo del usuario en modo carrera.
+const computeLeagueNewSeason = (comp: any, careerContext?: { active?: boolean; teamId?: number; teamName?: string; tactic?: any; baseDist?: any } | null) => {
   if (!comp || comp.type !== 'league') return null;
-  const sorted1 = [...(comp.teams || [])].sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga));
-  const sorted2 = [...(comp.teams2 || [])].sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga));
+  const sorted1 = [...(comp.teams || [])].sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
+  const sorted2 = [...(comp.teams2 || [])].sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga) || b.gf - a.gf);
   
-  const resetStats = (t: any) => {
-    const authentic = getAuthenticTeamStats(t);
+  const isCareerUserTeam = (t: any) => {
+    if (!careerContext?.active) return false;
+    if (careerContext.teamId !== undefined && t.id === careerContext.teamId) return true;
+    if (careerContext.teamName && t.name === careerContext.teamName) return true;
+    return false;
+  };
+
+  const resetStats = (t: any, isDiv2 = false) => {
+    const isUser = isCareerUserTeam(t);
+    let att = t.att;
+    let opp = t.opp;
+    let def = t.def;
+
+    if (!isUser) {
+      const authentic = getAuthenticTeamStats(t);
+      att = authentic.att;
+      opp = authentic.opp;
+      def = authentic.def;
+    }
+
     return {
       ...t,
-      att: authentic.att,
-      opp: authentic.opp,
-      def: authentic.def,
+      att,
+      opp,
+      def,
       p: 0,
       w: 0,
       d: 0,
@@ -231,7 +250,10 @@ const computeLeagueNewSeason = (comp: any) => {
   };
 
   if (sorted1.length < 4 || sorted2.length < 4) {
-    return { teams: sorted1.map(resetStats), teams2: sorted2.map(resetStats) };
+    return {
+      teams: sorted1.map((t, idx) => ({ ...resetStats(t, false), id: idx + 1 })),
+      teams2: sorted2.map((t, idx) => ({ ...resetStats(t, true), id: idx + 101 }))
+    };
   }
 
   const bottom3 = sorted1.slice(-3); // Descienden a 2ª División (puestos 18, 19, 20)
@@ -240,11 +262,22 @@ const computeLeagueNewSeason = (comp: any) => {
   const remaining1 = sorted1.slice(0, -3);
   const remaining2 = sorted2.slice(3);
 
-  // Los 3 que ascienden pasan a 1ª División con sus estadísticas reales europeas de club
-  // Los 3 que descienden pasan a 2ª División con sus estadísticas reales europeas de club
+  // Sanitización de IDs en ascensos y descensos para evitar colisiones:
+  // 1ª División recibe IDs secuenciales 1..20
+  // 2ª División recibe IDs secuenciales 101..120
+  const newTeams1 = [...remaining1, ...top3].map((t, idx) => ({
+    ...resetStats(t, false),
+    id: idx + 1
+  }));
+
+  const newTeams2 = [...remaining2, ...bottom3].map((t, idx) => ({
+    ...resetStats(t, true),
+    id: idx + 101
+  }));
+
   return {
-    teams: [...remaining1, ...top3].map(resetStats),
-    teams2: [...remaining2, ...bottom3].map(resetStats)
+    teams: newTeams1,
+    teams2: newTeams2
   };
 };
 
@@ -2498,7 +2531,7 @@ const HubView = ({ setView, setActiveCompId, setCompView, comps, seasonState, pe
             className='w-full py-3.5 px-4 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-2xl text-[11px] font-black uppercase italic tracking-wider active:scale-[0.98] transition-colors flex items-center justify-center gap-2 border border-amber-300/60 shadow-md'
           >
             <Dices size={17} className='text-slate-950 stroke-[2.5]' />
-            <span>Simular Jornada {globalMatchday} ({pending.length} ligas)</span>
+            <span>Simular Semana {globalMatchday} ({pending.length} ligas)</span>
           </button>
         )}
 
@@ -4037,6 +4070,33 @@ function DiceFootballApp() {
 
   // Nueva temporada global (tras la Champions)
   const startNewGlobalSeason = () => {
+    const seasonNow = seasonState.season || 1;
+
+    // GUARDIA MODO CARRERA: Asegura balance atómico y resolución contractual antes de avanzar
+    if (career.active) {
+      const contractStart = career.contractStart || career.startedSeason || seasonNow;
+      const seasonsServed = seasonNow - contractStart + 1;
+      const contractExpired = seasonsServed >= (career.contractSeasons || CONTRACT_SEASONS);
+
+      // Si aún no se procesó el balance de la temporada que termina:
+      if (career.lastProcessedSeason !== seasonNow && career.signedForSeason !== seasonNow) {
+        openCareerReview();
+        return;
+      }
+
+      // Si fue despedido y aún no firma por un nuevo club:
+      if (career.fired) {
+        openCareerReview();
+        return;
+      }
+
+      // Si expiró el contrato y no ha renovado ni firmado un nuevo vínculo:
+      if (contractExpired && career.signedForSeason !== seasonNow) {
+        openCareerReview();
+        return;
+      }
+    }
+
     // Si la Champions League finalizó o tiene final definida, asegurar el registro del campeón en el palmarés
     const cl = comps['C1'];
     if (cl) {
@@ -4068,8 +4128,19 @@ function DiceFootballApp() {
       }
     }
 
-    const seasonNow = seasonState.season || 1;
     const seasonTitles: any[] = [];
+    const careerContext = career.active ? {
+      active: true,
+      teamId: career.teamId,
+      teamName: careerTeam?.name,
+      tactic: career.tactic,
+      baseDist: career.baseDist
+    } : null;
+
+    let updatedCareerDiv = career.div;
+    let newCareerTeamId = career.teamId;
+    let wonPromotion = false;
+
     setComps(prev => {
       const next = { ...prev };
       LEAGUE_IDS.forEach(id => {
@@ -4099,12 +4170,38 @@ function DiceFootballApp() {
         const r2 = buildSeasonRecord(c.teams2, seasonNow);
         if (r1) seasonTitles.push({ compId: id, compName: c.name, type: 'league', div: 1, winner: r1.champion, season: seasonNow });
         if (r2) seasonTitles.push({ compId: id, compName: c.name, type: 'league', div: 2, winner: r2.champion, season: seasonNow });
-        const ns = computeLeagueNewSeason(c) || {};
+
+        // Snapshot de clasificaciones previas para acceso seguro al sorteo europeo y archivo
+        const prevStandings1 = buildStandingsSnapshot(c.teams) || c.previousStandings || null;
+        const prevStandings2 = buildStandingsSnapshot(c.teams2) || c.previousStandings2 || null;
+
+        const ns = computeLeagueNewSeason(c, careerContext) || {};
         next[id] = {
-          ...c, ...ns,
-          matchday: 0, matchday2: 0, history: [], history2: [],
-          showWinner: false, showWinner2: false
+          ...c,
+          ...ns,
+          previousStandings: prevStandings1,
+          previousStandings2: prevStandings2,
+          matchday: 0,
+          matchday2: 0,
+          history: [],
+          history2: [],
+          showWinner: false,
+          showWinner2: false
         };
+
+        // Si es la liga del usuario en modo carrera, sincronizar división y nuevo ID sanitizado
+        if (career.active && id === career.compId) {
+          const inDiv1 = (ns.teams || []).find((t: any) => (careerTeam?.name && t.name === careerTeam.name) || t.id === career.teamId);
+          const inDiv2 = (ns.teams2 || []).find((t: any) => (careerTeam?.name && t.name === careerTeam.name) || t.id === career.teamId);
+          if (inDiv1) {
+            newCareerTeamId = inDiv1.id;
+            if (career.div === 2) wonPromotion = true;
+            updatedCareerDiv = 1;
+          } else if (inDiv2) {
+            newCareerTeamId = inDiv2.id;
+            updatedCareerDiv = 2;
+          }
+        }
       });
       const defaults = getDefaultComps();
       next['C1'] = { ...defaults['C1'] };
@@ -4117,23 +4214,10 @@ function DiceFootballApp() {
     setSeasonState(s => ({ season: (s.season || 1) + 1, globalMatchday: 1, phase: 'leagues' }));
     setCareer(c => {
       if (!c.active) return c;
-      // Sincronizar automáticamente la división del club del usuario si ascendió o descendió
-      let updatedDiv = c.div;
-      let wonPromotion = false;
-      const leagueComp = comps[c.compId];
-      if (leagueComp && leagueComp.type === 'league') {
-        const sorted1 = [...(leagueComp.teams || [])].sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga));
-        const sorted2 = [...(leagueComp.teams2 || [])].sort((a, b) => b.pts - a.pts || (b.gf - b.ga) - (a.gf - a.ga));
-        if (c.div === 2 && sorted2.slice(0, 3).some(t => t.id === c.teamId || t.name === (careerTeam?.name || ''))) {
-          updatedDiv = 1;
-          wonPromotion = true;
-        } else if (c.div === 1 && sorted1.slice(-3).some(t => t.id === c.teamId || t.name === (careerTeam?.name || ''))) {
-          updatedDiv = 2;
-        }
-      }
       return {
         ...c,
-        div: updatedDiv,
+        div: updatedCareerDiv,
+        teamId: newCareerTeamId,
         trophies: {
           ...c.trophies,
           promotions: (c.trophies?.promotions || 0) + (wonPromotion ? 1 : 0)
@@ -5485,6 +5569,14 @@ function DiceFootballApp() {
     }
 
     executeCareerSimulatedMatch(injuryAttr, trainingFeedback, extraPeGained, newImmunityWeeks, injuryOccurredInSim);
+  };
+
+  const simulateCareerToNextMatch = () => {
+    if (!career?.active || careerDivisionFinished) {
+      simulateAllPendingLeagues();
+      return;
+    }
+    simulateCareerMatchday();
   };
 
   const simulateLeagueToGlobal = (compId: string) => {
@@ -9316,6 +9408,7 @@ function DiceFootballApp() {
                 onBack={() => setView('hub')}
                 onPlayMatch={startCareerMatch}
                 onSimulateMatch={simulateCareerMatchday}
+                onSimulateToNextMatch={simulateCareerToNextMatch}
                 onSimulateWorld={simulateAllPendingLeagues}
                 onSimulateGlobalMatchday={simulateAllPendingLeagues}
                 onSimulateAllRemainingLeagues={simulateAllRemainingLeagues}
